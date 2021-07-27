@@ -13,5 +13,5 @@ dependencies {
 
 application {
     // Define the main class for the application.
-    mainClass = 'org.dcm4che.staticwado.app.App'
+    mainClass = 'org.dcm4che.staticwado.StaticWado'
 }

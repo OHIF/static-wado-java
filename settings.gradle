@@ -8,4 +8,4 @@
  */
 
 rootProject.name = 'static-wado'
-include('app', 'list', 'utilities')
+include('StaticWado', 'list', 'utilities')
