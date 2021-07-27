@@ -10,6 +10,9 @@ plugins {
 repositories {
     // Use Maven Central for resolving dependencies.
     mavenCentral()
+    maven {
+        url "https://www.dcm4che.org/maven2"
+    }
 }
 
 dependencies {
