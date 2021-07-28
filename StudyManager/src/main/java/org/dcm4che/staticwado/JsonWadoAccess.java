@@ -21,19 +21,13 @@ import javax.json.stream.JsonGenerator;
 
 public class JsonWadoAccess {
     private static final Logger log = LoggerFactory.getLogger(JsonWadoAccess.class);
-    private final File studyDir;
+    private final FileHandler handler;
 
     private boolean encodeAsNumber = true;
-    private boolean gzip = false;
     private boolean pretty = false;
 
-    public JsonWadoAccess(File outputDir, String studyUid) {
-        this.studyDir = new File(outputDir,studyUid);
-        studyDir.mkdirs();
-    }
-
-    public JsonWadoAccess(File outputDir) {
-        this.studyDir = outputDir;
+    public JsonWadoAccess(FileHandler handler) {
+        this.handler = handler;
     }
 
     public JsonGenerator createGenerator(OutputStream out) {
@@ -55,25 +49,13 @@ public class JsonWadoAccess {
         return jsonWriter;
     }
 
-    public OutputStream openForWrite(String dest) throws IOException {
-        if( dest.contains("/") ) {
-            File destDir = new File(studyDir,dest).getParentFile();
-            destDir.mkdirs();
-        }
-        if( gzip ) {
-            return new GZIPOutputStream(new FileOutputStream(new File(studyDir,dest+".gz")));
-        } else {
-            return new FileOutputStream(new File(studyDir,dest));
-        }
-    }
-
     /**
      * Writes JSON representation of the given attributes to the destination file.
      * @param dest is a file name to write to
      * @param attributes is an array of objects to write to the given location
      */
     public void writeJson(String dest, Attributes... attributes) {
-        try(OutputStream fos = openForWrite(dest); JsonGenerator generator = createGenerator(fos)) {
+        try(OutputStream fos = handler.openForWrite(dest); JsonGenerator generator = createGenerator(fos)) {
             generator.writeStartArray();
             for(Attributes attr : attributes) {
                 JSONWriter writer = createWriter(generator);
@@ -85,11 +67,7 @@ public class JsonWadoAccess {
         } catch(IOException e) {
             log.warn("Unable to write file {}", dest, e);
         }
-        log.warn("Wrote to {} / {}", studyDir, dest);
-    }
-
-    public void setGzip(boolean b) {
-        gzip = b;
+        log.warn("Wrote to {} / {}", handler.getStudyDir(), dest);
     }
 
     public void setPretty(boolean b) {

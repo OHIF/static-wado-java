@@ -31,11 +31,12 @@ public class StudyManager {
         bulkTempDir = new File(exportDir,"bulkdata/"+Math.random());
         bulkTempDir.mkdirs();
         importFile(dir);
-        engine.finalizeStudy(exportDir);
-        JsonWadoAccess json = new JsonWadoAccess(exportDir);
+        engine.finalizeStudy();
+        FileHandler handler = new FileHandler(exportDir);
+        JsonWadoAccess json = new JsonWadoAccess(handler);
         json.setPretty(true);
         json.writeJson("studies.json", studies.toArray(Attributes[]::new));
-        json.setGzip(true);
+        handler.setGzip(true);
         json.writeJson("studies.json", studies.toArray(Attributes[]::new));
         return studies;
     }
@@ -69,8 +70,8 @@ public class StudyManager {
         }
         if( engine.isNewStudy(studyUID) ) {
             log.warn("Adding a new study UID {}", studyUID);
-            engine.finalizeStudy(exportDir);
-            Attributes studyAttr = engine.openNewStudy(attr);
+            engine.finalizeStudy();
+            Attributes studyAttr = engine.openNewStudy(attr, exportDir);
             studies.add(studyAttr);
         }
         engine.addObject(attr);
