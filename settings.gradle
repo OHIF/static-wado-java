@@ -8,4 +8,4 @@
  */
 
 rootProject.name = 'static-wado'
-include('StaticWado', 'StudyManager', 'utilities')
+include('StaticWado', 'StudyManager')

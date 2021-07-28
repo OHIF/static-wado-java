@@ -9,7 +9,7 @@ plugins {
 dependencies {
     implementation 'org.apache.commons:commons-text'
     implementation 'org.slf4j:slf4j-simple:1.7.32'
-    implementation project(':utilities')
+    implementation project(':StudyManager')
 }
 
 application {
