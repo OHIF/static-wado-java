@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -60,5 +61,14 @@ public class StudyData {
 
     public Attributes[] getInstances() {
         return metadata.values().stream().map( DicomSelector.INSTANCE::select ).toArray(Attributes[]::new);
+    }
+
+    public Collection<String> getSeriesUids() {
+        return series.keySet();
+    }
+
+    public Attributes[] getMetadata(String seriesUID) {
+        return metadata.values().stream().filter(attr -> seriesUID.equals(attr.getString(Tag.SeriesInstanceUID)))
+                .toArray(Attributes[]::new);
     }
 }

@@ -38,6 +38,9 @@ public class StudyMetadataEngine {
             json.writeJson("series", studyData.getSeries());
             json.writeJson("instances", instances);
             json.writeJson("metadata", studyData.getMetadata());
+            studyData.getSeriesUids().forEach( seriesUid -> {
+                json.writeJson("series/"+seriesUid+"/metadata", studyData.getMetadata(seriesUid));
+            });
         }
         finally {
             studyData = null;
