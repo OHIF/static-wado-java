@@ -1,6 +1,8 @@
 package org.dcm4che.staticwado;
 
 import org.dcm4che3.data.Attributes;
+import org.dcm4che3.data.BulkData;
+import org.dcm4che3.data.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,9 +29,9 @@ public class StudyMetadataEngine {
             studyData.updateCounts();
             JsonWadoAccess json = new JsonWadoAccess(handler);
             json.writeJson("studies", studyData.getStudyAttributes());
-            json.writeJson("series", studyData.getSeries());
+            json.writeJson("series.json", studyData.getSeries());
             Attributes[] instances = studyData.getInstances();
-            json.writeJson("instances", instances);
+            json.writeJson("instances.json", instances);
             json.writeJson("metadata", studyData.getMetadata());
             handler.setGzip(true);
             json.writeJson("studies", studyData.getStudyAttributes());
@@ -51,6 +53,45 @@ public class StudyMetadataEngine {
 
     public void addObject(Attributes attr) {
         studyData.addObject(attr);
+        moveBulkdata(attr);
+    }
+
+    /**
+     * Moves the bulkdata from the temp directory into:
+     * series/SERIES_UID/instances/SOP_UID/frames/frame#
+     * and
+     * series/SERIES_UID/instances/SOP_UID/bulkdata/bulkdataHashCode
+     * Note that frame# starts at 1.
+     *
+     * It then replaces the URL reference with a relative URL reference starting with the study UID.
+     *
+     * TODO: Handle video and fragmented images
+     * @param attr which is searched for bulkdata
+     */
+    public void moveBulkdata(Attributes attr) {
+        String studyUid = attr.getString(Tag.StudyInstanceUID);
+        String seriesUID = attr.getString(Tag.SeriesInstanceUID);
+        String sopUID = attr.getString(Tag.SOPInstanceUID);
+        try {
+            attr.accept((retrievePath, tag, vr, value) -> {
+                if( ! (value instanceof BulkData) ) return true;
+                BulkData bulk = (BulkData) value;
+                log.warn("Moving bulkdata item {}", bulk.getURI());
+                String hash = handler.hashOf(bulk.getFile());
+                String bulkName = "../bulkdata/"+hash+".raw";
+                // TODO - handle multi-frame as well as transfer syntax/type
+                if( tag==Tag.PixelData ) {
+                    log.warn("TODO - handle extension and frame#");
+                }
+                handler.move(bulk.getFile(), bulkName);
+                String finalUri = studyUid + "/"+bulkName;
+                log.warn("Final uri = {} was {}", finalUri, bulk.getURI());
+                bulk.setURI(finalUri);
+                return true;
+            }, true);
+        } catch (Exception e) {
+            log.warn("Unable to move item because", e);
+        }
     }
 
     /**

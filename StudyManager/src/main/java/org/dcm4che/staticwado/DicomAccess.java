@@ -27,6 +27,7 @@ public class DicomAccess {
         };
 
     public static Attributes readFile(String path, File bulkFile) throws IOException {
+        bulkFile.mkdirs();
         try(FileInputStream fis = new FileInputStream(path); DicomInputStream dis = new DicomInputStream(fis)) {
             dis.setIncludeBulkData(DicomInputStream.IncludeBulkData.URI);
             dis.setBulkDataDirectory(bulkFile);

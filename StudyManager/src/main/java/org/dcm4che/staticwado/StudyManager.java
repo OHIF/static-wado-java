@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
+import org.dcm4che3.io.DicomStreamException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +19,7 @@ import org.slf4j.LoggerFactory;
 public class StudyManager {
     private static final Logger log = LoggerFactory.getLogger(StudyManager.class);
 
-    File bulkTempDir = new File("c:/dicomweb/bulkdata/temp");
+    File bulkTempDir = new File("c:/dicomweb/temp");
     File exportDir;
     List<Attributes> studies = new ArrayList<>();
     StudyMetadataEngine engine = new StudyMetadataEngine();
@@ -56,6 +57,8 @@ public class StudyManager {
     private void tryImportDicom(File file) {
         try {
             importDicom(file);
+        } catch(DicomStreamException dse) {
+            log.warn("Skipping non-dicom {}", file);
         } catch(IOException e) {
             log.warn("Caught exception:"+e);
         }
