@@ -108,7 +108,6 @@ public class StudyMetadataEngine {
                     }
                     bulk.getFile().delete();
                 } else if( value instanceof Fragments ) {
-                    handler.setGzip(false);
                     Fragments fragments = (Fragments) value;
                     /*
                     There are several options here - non image data should never be handled as fragments, is a TODO
@@ -173,7 +172,8 @@ public class StudyMetadataEngine {
         String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/";
         String tsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
         String contentType = CONTENT_TYPES.get(tsuid);
-        if( contentType==null ) contentType="octet/stream";
+        if( contentType==null ) contentType=OCTET_STREAM;
+        handler.setGzip(OCTET_STREAM.equals(contentType));
         for(int i=1; i<fragments.size(); i++) {
             saveMultipart(frameName+i, fragments.get(i), contentType, SEPARATOR );
         }
