@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
 public class StudyManager {
     private static final Logger log = LoggerFactory.getLogger(StudyManager.class);
 
-    File bulkTempDir = new File("c:/dicomweb/temp");
+    File bulkTempDir;
     File exportDir;
     List<Attributes> studies = new ArrayList<>();
     StudyMetadataEngine engine = new StudyMetadataEngine();
@@ -29,7 +29,7 @@ public class StudyManager {
      */
     public List<Attributes> importStudies(String importDir) {
         File dir = new File(importDir);
-        bulkTempDir = new File(exportDir,"bulkdata/"+Math.random());
+        bulkTempDir = new File(exportDir,"temp/"+Math.random());
         bulkTempDir.mkdirs();
         importFile(dir);
         engine.finalizeStudy();
