@@ -81,10 +81,13 @@ public class StudyMetadataEngine {
                 BulkData bulk = (BulkData) value;
                 log.warn("Moving bulkdata item {}", bulk.getURI());
                 String hash = handler.hashOf(bulk.getFile());
-                String bulkName = "../bulkdata/"+hash+".raw";
+                String bulkName = "bulkdata/"+hash+".raw";
                 // TODO - handle multi-frame as well as transfer syntax/type
                 if( tag==Tag.PixelData ) {
-                    log.warn("TODO - handle extension and frame#");
+                    bulkName = "series/"+seriesUID+"/instances/"+sopUID+"/frames/1";
+                    if( attr.getInt(Tag.NumberOfFrames,-1)>1 ) {
+                        log.error("Can't handle multi-frame");
+                    }
                 }
                 handler.move(bulk.getFile(), bulkName);
                 String finalUri = studyUid + "/"+bulkName;
