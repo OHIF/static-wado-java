@@ -56,6 +56,10 @@ public class JsonWadoAccess {
     }
 
     public OutputStream openForWrite(String dest) throws IOException {
+        if( dest.contains("/") ) {
+            File destDir = new File(studyDir,dest).getParentFile();
+            destDir.mkdirs();
+        }
         if( gzip ) {
             return new GZIPOutputStream(new FileOutputStream(new File(studyDir,dest+".gz")));
         } else {

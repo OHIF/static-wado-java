@@ -4,6 +4,9 @@ import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.VR;
 
+import java.util.Arrays;
+import java.util.HashSet;
+
 /** Selects various dicom sub-sets */
 public interface DicomSelector {
     Attributes select(Attributes src);
@@ -21,22 +24,26 @@ public interface DicomSelector {
             if( selection==null ) {
                 selection = tags;
             } else {
-                int[] newSelection = new int[selection.length+tags.length];
-                System.arraycopy(selection,0,newSelection,0,selection.length);
-                System.arraycopy(tags,0,newSelection,selection.length,tags.length);
-                selection = newSelection;
+                // Need to de-duplicate this as the Attributes add selection doesn't like duplicated items.
+                HashSet<Integer> newSelection = new HashSet<>();
+                for(int item : selection) newSelection.add(item);
+                for(int item : tags) newSelection.add(item);
+                selection = new int[newSelection.size()];
+                int i=0;
+                for(Integer item : newSelection) selection[i++] = item;
             }
+            Arrays.sort(selection);
             return this;
         }
     }
 
-    int[] STUDY_TAGS = new int[]{Tag.StudyInstanceUID, Tag.StudyID, Tag.StudyDate, Tag.StudyDescription,
+    int[] STUDY_TAGS = new int[]{Tag.SpecificCharacterSet, Tag.StudyInstanceUID, Tag.StudyID, Tag.StudyDate, Tag.StudyDescription,
         Tag.AccessionNumber, Tag.StudyTime, Tag.StudyComments,
     };
 
-    int[] PATIENT_TAGS = new int[]{Tag.PatientName, Tag.PatientID, Tag.OtherPatientIDs, Tag.IssuerOfPatientID, Tag.PatientAge};
+    int[] PATIENT_TAGS = new int[]{Tag.SpecificCharacterSet, Tag.PatientName, Tag.PatientID, Tag.OtherPatientIDs, Tag.IssuerOfPatientID, Tag.PatientAge};
 
-    int[] SERIES_TAGS = new int[]{Tag.SeriesInstanceUID, Tag.SeriesDescription, Tag.SeriesDate, Tag.SeriesTime,
+    int[] SERIES_TAGS = new int[]{Tag.SpecificCharacterSet, Tag.SeriesInstanceUID, Tag.SeriesDescription, Tag.SeriesDate, Tag.SeriesTime,
         Tag.SeriesDescriptionCodeSequence, Tag.SeriesNumber, Tag.SeriesType,
     };
 

@@ -26,10 +26,13 @@ public class StudyMetadataEngine {
         JsonWadoAccess json = new JsonWadoAccess(exportDir, studyData.getStudyUid());
         json.writeJson("studies.json", studyData.getStudyAttributes());
         json.writeJson("series.json", studyData.getSeries());
+        Attributes[] instances = studyData.getInstances();
+        json.writeJson( "instances.json", instances);
         json.writeJson("metadata.json", studyData.getMetadata());
         json.setGzip(true);
         json.writeJson("studies.json", studyData.getStudyAttributes());
         json.writeJson("series.json", studyData.getSeries());
+        json.writeJson( "instances.json", instances);
         json.writeJson("metadata.json", studyData.getMetadata());
         studyData = null;
     }

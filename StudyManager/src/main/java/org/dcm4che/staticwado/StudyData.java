@@ -6,6 +6,7 @@ import org.dcm4che3.data.VR;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -55,5 +56,9 @@ public class StudyData {
 
     public Attributes[] getSeries() {
         return series.values().toArray(Attributes[]::new);
+    }
+
+    public Attributes[] getInstances() {
+        return metadata.values().stream().map( DicomSelector.INSTANCE::select ).toArray(Attributes[]::new);
     }
 }
