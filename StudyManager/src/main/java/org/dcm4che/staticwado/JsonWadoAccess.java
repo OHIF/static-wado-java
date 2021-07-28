@@ -74,6 +74,8 @@ public class JsonWadoAccess {
             for(Attributes attr : attributes) {
                 JSONWriter writer = createWriter(generator);
                 writer.write(attr);
+                generator.flush();
+                fos.write('\n');
             }
             generator.writeEnd();
         } catch(IOException e) {
