@@ -5,6 +5,8 @@ import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.VR;
 import org.dcm4che3.io.BulkDataDescriptor;
 import org.dcm4che3.io.DicomInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -13,6 +15,8 @@ import java.util.List;
 
 /** Provides access to DICOM binary files */
 public class DicomAccess {
+    private static final Logger log = LoggerFactory.getLogger(DicomAccess.class);
+
     // The maximum length of a LUT table
     static final int LUT_LENGTH_MAX = 64*1024*2;
 
@@ -20,11 +24,14 @@ public class DicomAccess {
     static final int MAX_PRIVATE_SIZE = 64;
 
     static boolean descriptor(List<ItemPointer> itemPointer, String privateCreator, int tag, VR vr, int length) {
-            if( privateCreator!=null ) {
-                return length>MAX_PRIVATE_SIZE;
-            }
-            return tag==Tag.PixelData || length > LUT_LENGTH_MAX;
-        };
+        if( privateCreator!=null ) {
+            return length>MAX_PRIVATE_SIZE;
+        }
+        if( tag==Tag.PixelData ) {
+            log.warn("Pixel Data is multi-frame");
+        }
+        return tag==Tag.PixelData || length > LUT_LENGTH_MAX;
+    }
 
     public static Attributes readFile(String path, File bulkFile) throws IOException {
         bulkFile.mkdirs();

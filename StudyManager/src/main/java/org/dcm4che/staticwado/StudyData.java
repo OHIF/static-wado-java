@@ -41,7 +41,7 @@ public class StudyData {
         }
         String seriesUid = attr.getString(Tag.SeriesInstanceUID);
         Attributes seriesData = series.computeIfAbsent(seriesUid, (key) -> DicomSelector.SERIES.select(attr));
-        log.warn("Adding series {} with contents {}", seriesUid, seriesData);
+        log.debug("Adding series {} with contents {}", seriesUid, seriesData);
         seriesData.setInt(Tag.NumberOfSeriesRelatedInstances,VR.IS, 1+seriesData.getInt(Tag.NumberOfSeriesRelatedInstances,0));
     }
 

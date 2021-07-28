@@ -6,7 +6,14 @@ public class StudyManagerTest {
     @Test
     void convertStaticDicomDirTest() {
         StudyManager manager = new StudyManager();
-        manager.setExportDir("c:/dicomweb/studies");
-        manager.importStudies("c:/dicom/CTLymphNodes");
+        manager.setExportDir("/dicomweb/studies");
+        manager.importStudies("/dicom/CTLymphNodes");
+    }
+
+    @Test
+    void convertStaticDicomDirMultiframeTest() {
+        StudyManager manager = new StudyManager();
+        manager.setExportDir("/dicomweb/studies");
+        manager.importStudies("/dicom/multiframes/US-PAL-8-10x-echo");
     }
 }

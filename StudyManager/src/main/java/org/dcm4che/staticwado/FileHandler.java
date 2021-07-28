@@ -55,6 +55,7 @@ public class FileHandler {
     public void move(File file, String dest) {
         mkdirs(dest);
         file.renameTo(new File(studyDir,dest));
+        file.delete();
     }
 
     /** Generates a hash of a given path, generation levels sub-directories for it */
