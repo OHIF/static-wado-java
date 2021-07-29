@@ -27,9 +27,6 @@ public class DicomAccess {
         if( privateCreator!=null ) {
             return length>MAX_PRIVATE_SIZE;
         }
-        if( tag==Tag.PixelData ) {
-            log.warn("Pixel Data is multi-frame");
-        }
         return tag==Tag.PixelData || length > LUT_LENGTH_MAX;
     }
 

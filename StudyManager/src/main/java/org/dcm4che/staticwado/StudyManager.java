@@ -36,9 +36,9 @@ public class StudyManager {
         FileHandler handler = new FileHandler(exportDir);
         JsonWadoAccess json = new JsonWadoAccess(handler);
         json.setPretty(true);
-        json.writeJson("studies.json", studies.toArray(Attributes[]::new));
+        json.writeJson("../studies.json", studies.toArray(Attributes[]::new));
         handler.setGzip(true);
-        json.writeJson("studies.json", studies.toArray(Attributes[]::new));
+        json.writeJson("../studies", studies.toArray(Attributes[]::new));
         return studies;
     }
 

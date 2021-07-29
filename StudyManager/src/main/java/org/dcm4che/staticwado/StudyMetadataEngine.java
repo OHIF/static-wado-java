@@ -151,7 +151,7 @@ public class StudyMetadataEngine {
         }
         String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/";
         String contentType = OCTET_STREAM;
-        for(int i=1; i< frames+1; i++) {
+        for(int i=1; i<= frames; i++) {
             bulk.setURI(origUri + "?offset="+(imageLen*i-imageLen)+"&length="+imageLen);
             saveMultipart(frameName+i, bulk, contentType, SEPARATOR );
         }
