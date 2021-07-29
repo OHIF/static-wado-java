@@ -151,8 +151,8 @@ public class StudyMetadataEngine {
         }
         String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/";
         String contentType = OCTET_STREAM;
-        for(int i=1; i< frames; i++) {
-            bulk.setURI(origUri + "?offset="+(imageLen*frames-imageLen)+"&length="+imageLen);
+        for(int i=1; i< frames+1; i++) {
+            bulk.setURI(origUri + "?offset="+(imageLen*i-imageLen)+"&length="+imageLen);
             saveMultipart(frameName+i, bulk, contentType, SEPARATOR );
         }
     }
@@ -207,7 +207,7 @@ public class StudyMetadataEngine {
     }
 
     private static final Pattern OFFSET_REGEXP = Pattern.compile("offset=([0-9]+)");
-    private static final Pattern LENGTH_REGEXP = Pattern.compile("offset=([0-9]+)");
+    private static final Pattern LENGTH_REGEXP = Pattern.compile("length=([0-9]+)");
 
     public void copyFrom(Object value, OutputStream os) throws IOException {
         if( value instanceof byte[] ) {
