@@ -32,7 +32,8 @@ public class StudyMetadataEngine {
         CONTENT_TYPES.put(UID.JPEG2000,"image/jp2");
         CONTENT_TYPES.put(UID.JPEGBaseline8Bit,"image/jpeg");
         CONTENT_TYPES.put(UID.RLELossless,"image/dicom-rle");
-        CONTENT_TYPES.put(UID.JPEGLossless,"image/jll");
+        CONTENT_TYPES.put(UID.JPEGLossless,"image/jpeg");
+        CONTENT_TYPES.put(UID.JPEGLosslessSV1, "image/jll");
         CONTENT_TYPES.put(UID.JPEGLSLossless, "image/jls");
         CONTENT_TYPES.put(UID.MPEG2MPML, "video/mpeg");
     }
@@ -52,6 +53,8 @@ public class StudyMetadataEngine {
             studyData.updateCounts();
             JsonWadoAccess json = new JsonWadoAccess(handler);
             Attributes[] instances = studyData.getInstances();
+            handler.setGzip(false);
+            json.writeJson("series.json", studyData.getSeries());
             handler.setGzip(true);
             json.writeJson("studies", studyData.getStudyAttributes());
             json.writeJson("series", studyData.getSeries());
@@ -78,6 +81,17 @@ public class StudyMetadataEngine {
         moveBulkdata(attr);
     }
 
+    /**
+     * Creates a de-duplicated copy of the source attributes.
+     * This extracts Attributes instances
+     * @param srcAttr
+     * @return
+     */
+    public Attributes[] deduplicate(Attributes[] srcAttr) {
+        throw new UnsupportedOperationException("TODO");
+    }
+
+    ////////////// TODO - move the bulkdata code into BulkDataAccess
     /**
      * Moves the bulkdata from the temp directory into:
      * series/SERIES_UID/instances/SOP_UID/frames/frame#
@@ -173,7 +187,8 @@ public class StudyMetadataEngine {
         String tsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
         String contentType = CONTENT_TYPES.get(tsuid);
         if( contentType==null ) contentType=OCTET_STREAM;
-        handler.setGzip(OCTET_STREAM.equals(contentType));
+        // TODO - figure out what can be done here as far as compression is concerned
+        handler.setGzip(false && OCTET_STREAM.equals(contentType));
         for(int i=1; i<fragments.size(); i++) {
             saveMultipart(frameName+i, fragments.get(i), contentType, SEPARATOR );
         }
@@ -187,7 +202,7 @@ public class StudyMetadataEngine {
 
     public void saveMultipart(String dest, Object value, String contentType, String separator) {
         byte[] separatorBytes = separator.getBytes(StandardCharsets.UTF_8);
-        log.warn("Writing multipart {} value {}", dest, value);
+        log.warn("Writing multipart {} content type {}", dest, contentType);
         try(OutputStream os = handler.openForWrite(dest)) {
             os.write(DASH_BYTES);
             os.write(separatorBytes);

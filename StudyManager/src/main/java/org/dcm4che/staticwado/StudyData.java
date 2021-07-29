@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +34,21 @@ public class StudyData {
         return studyAttributes;
     }
 
+    public void appendModality(String modality) {
+        if( modality==null ) return;
+        String[] modalities = studyAttributes.getStrings(Tag.ModalitiesInStudy);
+        if( modalities==null ) {
+            studyAttributes.setString(Tag.ModalitiesInStudy,VR.CS,modality);
+            return;
+        }
+        for(String testModality : modalities) {
+            if( testModality.equals(modality) ) return;
+        }
+        String[] newModalities = Arrays.copyOf(modalities,modalities.length+1);
+        modalities[modalities.length-1] = modality;
+        studyAttributes.setString(Tag.ModalitiesInStudy,VR.CS,newModalities);
+    }
+
     public void addObject(Attributes attr) {
         String sopUid = attr.getString(Tag.SOPInstanceUID);
         if( metadata.put(sopUid,attr)!=null ) {
@@ -40,7 +56,10 @@ public class StudyData {
             return;
         }
         String seriesUid = attr.getString(Tag.SeriesInstanceUID);
-        Attributes seriesData = series.computeIfAbsent(seriesUid, (key) -> DicomSelector.SERIES.select(attr));
+        Attributes seriesData = series.computeIfAbsent(seriesUid, (key) -> {
+            appendModality(attr.getString(Tag.Modality));
+            return DicomSelector.SERIES.select(attr);
+        });
         log.debug("Adding series {} with contents {}", seriesUid, seriesData);
         seriesData.setInt(Tag.NumberOfSeriesRelatedInstances,VR.IS, 1+seriesData.getInt(Tag.NumberOfSeriesRelatedInstances,0));
     }

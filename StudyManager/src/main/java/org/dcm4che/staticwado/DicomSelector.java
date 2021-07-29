@@ -2,7 +2,6 @@ package org.dcm4che.staticwado;
 
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
-import org.dcm4che3.data.VR;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -44,7 +43,7 @@ public interface DicomSelector {
     int[] PATIENT_TAGS = new int[]{Tag.SpecificCharacterSet, Tag.PatientName, Tag.PatientID, Tag.OtherPatientIDs, Tag.IssuerOfPatientID, Tag.PatientAge};
 
     int[] SERIES_TAGS = new int[]{Tag.SpecificCharacterSet, Tag.SeriesInstanceUID, Tag.SeriesDescription, Tag.SeriesDate, Tag.SeriesTime,
-        Tag.SeriesDescriptionCodeSequence, Tag.SeriesNumber, Tag.SeriesType,
+        Tag.SeriesDescriptionCodeSequence, Tag.SeriesNumber, Tag.SeriesType, Tag.Modality,
     };
 
     int[] INSTANCE_TAGS = new int[]{Tag.SeriesInstanceUID, Tag.SOPInstanceUID, Tag.SOPClassUID, Tag.AvailableTransferSyntaxUID, Tag.InstanceNumber,
