@@ -45,7 +45,7 @@ public class StudyData {
             if( testModality.equals(modality) ) return;
         }
         String[] newModalities = Arrays.copyOf(modalities,modalities.length+1);
-        modalities[modalities.length-1] = modality;
+        newModalities[newModalities.length-1] = modality;
         studyAttributes.setString(Tag.ModalitiesInStudy,VR.CS,newModalities);
     }
 

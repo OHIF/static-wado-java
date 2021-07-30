@@ -77,7 +77,7 @@ public class StudyManager {
             Attributes studyAttr = engine.openNewStudy(attr, exportDir);
             studies.add(studyAttr);
         }
-        engine.addObject(attr);
+        engine.addObject(file, attr);
     }
 
     public void setExportDir(String name) {

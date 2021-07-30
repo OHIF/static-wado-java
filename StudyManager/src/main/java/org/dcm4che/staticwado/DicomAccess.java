@@ -32,10 +32,11 @@ public class DicomAccess {
 
     public static Attributes readFile(String path, File bulkFile) throws IOException {
         bulkFile.mkdirs();
-        try(FileInputStream fis = new FileInputStream(path); DicomInputStream dis = new DicomInputStream(fis)) {
+        try(DicomInputStream dis = new DicomInputStream(new File(path))) {
             dis.setIncludeBulkData(DicomInputStream.IncludeBulkData.URI);
             dis.setBulkDataDirectory(bulkFile);
             dis.setBulkDataFileSuffix(".raw");
+
             dis.setBulkDataDescriptor(DicomAccess::descriptor);
             Attributes fmi = dis.readFileMetaInformation();
             String transferSyntax = fmi.getString(Tag.TransferSyntaxUID);

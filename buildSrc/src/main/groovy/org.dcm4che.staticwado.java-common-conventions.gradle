@@ -13,6 +13,9 @@ repositories {
     maven {
         url "https://www.dcm4che.org/maven2"
     }
+    maven {
+        url "https://raw.github.com/nroduit/mvn-repo/master/"
+    }
 }
 
 dependencies {

@@ -7,7 +7,7 @@ public class StudyManagerTest {
     void convertStaticDicomDirTest() {
         StudyManager manager = new StudyManager();
         manager.setExportDir("/dicomweb/studies");
-        manager.importStudies("/dicom/CTLymphNodes");
+        manager.importStudies("/dicom/2_skull_ct/DICOM/I0");
     }
 
     @Test

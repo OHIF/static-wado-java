@@ -51,23 +51,19 @@ public class FileHandler {
         return studyDir;
     }
 
-    /** Moves the given file to the destination location */
-    public void move(File file, String dest) {
-        mkdirs(dest);
-        file.renameTo(new File(studyDir,dest));
-        file.delete();
-    }
-
     /** Generates a hash of a given path, generation levels sub-directories for it */
-    public String hashOf(File file) {
+    public String hashOf(File file, long offset, long length) {
         try (InputStream is = new FileInputStream(file)){
+            is.skip(offset);
             MessageDigest digest = MessageDigest.getInstance("SHA-1");
             digest.reset();
             byte[] data = new byte[16384];
+            long cumulativeLength = 0;
             int len = 0;
-            while(len!=-1) {
+            while(len!=-1 && cumulativeLength < length) {
                 digest.update(data,0,len);
-                len = is.read(data);
+                int readLen = (int) Math.min(length-cumulativeLength, data.length);
+                len = is.read(data,0,readLen);
             }
             String sha1 = String.format("%040x", new BigInteger(1, digest.digest()));
             return sha1.substring(0,4)+"/"+sha1.substring(4,8) + "/"+sha1.substring(8);

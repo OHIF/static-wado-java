@@ -67,7 +67,7 @@ public class JsonWadoAccess {
         } catch(IOException e) {
             log.warn("Unable to write file {}", dest, e);
         }
-        log.warn("Wrote to {} / {}", handler.getStudyDir(), dest);
+        log.debug("Wrote to {} / {}", handler.getStudyDir(), dest);
     }
 
     public void setPretty(boolean b) {
