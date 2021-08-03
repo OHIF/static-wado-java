@@ -1,12 +1,27 @@
 package org.dcm4che.staticwado;
-import org.dcm4che.staticwado.StudyManager;
+import org.apache.commons.cli.*;
 
 public class StaticWado {
-    public static void main(String[] args) {
+
+    private static CommandLine parseCommandLine(String[] args)
+            throws ParseException {
+        Options opts = new Options();
+        opts.addOption(Option.builder("d")
+                        .desc("Output directory")
+                .hasArg()
+                .argName("directory")
+                .build());
+        CommandLineParser parser = new DefaultParser();
+        return parser.parse(opts, args);
+    }
+
+    public static void main(String[] args) throws Exception {
+        CommandLine cl = parseCommandLine(args);
         StudyManager manager = new StudyManager();
-        String importDir = args.length>0 ? args[0] : "c:/dicom";
-        String exportDir = args.length>1 ? args[1] : "c:/dicomweb/studies";
+        String[] otherArgs = cl.getArgs();
+        if( otherArgs==null || otherArgs.length==0 ) otherArgs = new String[]{"c:/dicom"};
+        String exportDir = cl.getOptionValue('d', "c:/dicomweb");
         manager.setExportDir(exportDir);
-        manager.importStudies(importDir);
+        manager.importStudies(otherArgs);
     }
 }

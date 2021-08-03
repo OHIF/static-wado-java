@@ -55,6 +55,8 @@ public class BulkDataAccess {
         CONTENT_TYPES.put(UID.JPEGLossless,"image/jpeg");
         CONTENT_TYPES.put(UID.JPEGLosslessSV1, IMAGE_JPEG_LOSSLESS);
         CONTENT_TYPES.put(UID.JPEGLSLossless, IMAGE_JPEG_LS);
+        CONTENT_TYPES.put(UID.JPEG2000Lossless, "image/j2k");
+        CONTENT_TYPES.put(UID.JPEG2000, "image/j2k");
         CONTENT_TYPES.put(UID.MPEG2MPML, "video/mpeg");
     }
 

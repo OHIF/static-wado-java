@@ -1,8 +1,5 @@
 package org.dcm4che.staticwado;
-import org.dcm4che3.data.Attributes;
-import org.dcm4che3.data.ItemPointer;
-import org.dcm4che3.data.Tag;
-import org.dcm4che3.data.VR;
+import org.dcm4che3.data.*;
 import org.dcm4che3.io.BulkDataDescriptor;
 import org.dcm4che3.io.DicomInputStream;
 import org.slf4j.Logger;
@@ -39,7 +36,7 @@ public class DicomAccess {
 
             dis.setBulkDataDescriptor(DicomAccess::descriptor);
             Attributes fmi = dis.readFileMetaInformation();
-            String transferSyntax = fmi.getString(Tag.TransferSyntaxUID);
+            String transferSyntax = fmi!=null ? fmi.getString(Tag.TransferSyntaxUID) : UID.ImplicitVRLittleEndian;
             Attributes attr = dis.readDataset();
             attr.setString(Tag.AvailableTransferSyntaxUID, VR.UI, transferSyntax);
             return attr;

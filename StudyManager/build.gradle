@@ -7,10 +7,12 @@ plugins {
 }
 
 dependencies {
+    implementation files('libs/dcm4che-imageio-local.jar')
+    runtimeOnly files('libs/dcm4che-imageio-opencv-local.jar')
+    implementation 'org.weasis.core:weasis-core-img:4.5.3'
     implementation 'org.dcm4che:dcm4che-core:5.23.3'
+    implementation 'org.dcm4che:dcm4che-image:5.23.3'
     implementation 'org.dcm4che:dcm4che-json:5.23.3'
-    implementation 'org.dcm4che:dcm4che-imageio:5.23.3'
     implementation 'org.dcm4che:dcm4che-imageio-rle:5.23.3'
-    runtimeOnly 'org.dcm4che:dcm4che-imageio-opencv:5.23.3'
     testImplementation 'org.slf4j:slf4j-simple:1.7.32'
 }

@@ -27,11 +27,12 @@ public class StudyManager {
     /**
      * Imports a set of studies from the given directory input, and writes the data to the directory out.
      */
-    public List<Attributes> importStudies(String importDir) {
-        File dir = new File(importDir);
+    public List<Attributes> importStudies(String... importDirs) {
         bulkTempDir = new File(exportDir,"temp/"+Math.random());
         bulkTempDir.mkdirs();
-        importFile(dir);
+        for(String importDir : importDirs) {
+            importFile(new File(importDir));
+        }
         engine.finalizeStudy();
         FileHandler handler = new FileHandler(exportDir);
         JsonWadoAccess json = new JsonWadoAccess(handler);
@@ -81,7 +82,7 @@ public class StudyManager {
     }
 
     public void setExportDir(String name) {
-        this.exportDir = new File(name);
+        this.exportDir = new File(name+"/studies");
     }
 
 }
