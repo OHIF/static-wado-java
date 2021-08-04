@@ -2,15 +2,17 @@ package org.dcm4che.staticwado;
 
 import org.dcm4che3.data.Attributes;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.VR;
+import org.dcm4che3.json.JSONReader;
 import org.dcm4che3.json.JSONWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import javax.json.Json;
 import javax.json.JsonValue;
 import javax.json.stream.JsonGenerator;
+import javax.json.stream.JsonParser;
 
 public class JsonWadoAccess {
     private static final Logger log = LoggerFactory.getLogger(JsonWadoAccess.class);
@@ -69,6 +72,27 @@ public class JsonWadoAccess {
         }
         log.debug("Wrote to {} / {}", handler.getStudyDir(), dest);
     }
+
+    public static List<Attributes> read(File location) throws IOException {
+        List<Attributes> ret = new ArrayList<>();
+        try(InputStream is = new FileInputStream(location); GZIPInputStream gzip = new GZIPInputStream(is)) {
+            JsonParser parser = Json.createParser(gzip);
+            new JSONReader(parser).readDatasets((fmi,attr) -> {
+                ret.add(attr);
+            });
+        }
+        return ret;
+    }
+
+    public static void readStudiesDirectory(Map<String,Attributes> studies, File file) throws IOException {
+        List<Attributes> studiesArr = JsonWadoAccess.read( file);
+        for(Attributes attr : studiesArr) {
+            String studyUID = attr.getString(Tag.StudyInstanceUID);
+            studies.put(studyUID,attr);
+        }
+    }
+
+
 
     public void setPretty(boolean b) {
         pretty = b;

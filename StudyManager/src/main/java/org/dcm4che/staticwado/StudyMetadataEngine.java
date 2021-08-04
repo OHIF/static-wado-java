@@ -3,8 +3,10 @@ package org.dcm4che.staticwado;
 import org.dcm4che3.data.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static org.dcm4che.staticwado.DicomAccess.*;
 
 import java.io.*;
+import java.util.*;
 
 /**
  * The study metadata engine has the internal knowledge on how to read DICOM files and add them to a static WADO
@@ -28,8 +30,6 @@ public class StudyMetadataEngine {
             studyData.updateCounts();
             JsonWadoAccess json = new JsonWadoAccess(handler);
             Attributes[] instances = studyData.getInstances();
-            handler.setGzip(false);
-            json.writeJson("series.json", studyData.getSeries());
             handler.setGzip(true);
             json.writeJson("studies", studyData.getStudyAttributes());
             json.writeJson("series", studyData.getSeries());
@@ -38,6 +38,8 @@ public class StudyMetadataEngine {
             studyData.getSeriesUids().forEach(seriesUid -> {
                 json.writeJson("series/" + seriesUid + "/metadata", studyData.getMetadata(seriesUid));
             });
+            Attributes[] deduplicated = deduplicate(studyData.getInstances());
+            json.writeJson("deduplicated", deduplicated);
         } finally {
             studyData = null;
             handler = null;
@@ -64,8 +66,33 @@ public class StudyMetadataEngine {
      * @return
      */
     public Attributes[] deduplicate(Attributes[] srcAttr) {
-        throw new UnsupportedOperationException("TODO");
+        Map<String,Attributes> hashAttributes = new HashMap<>();
+        for(Attributes attr : srcAttr) {
+            deduplicate(hashAttributes,attr);
+        }
+        return hashAttributes.values().toArray(new Attributes[0]);
     }
 
+    private static final List<DicomSelector> deduplicateSelectors = new ArrayList<>(Arrays.asList(
+            DicomSelector.PATIENT,
+            DicomSelector.STUDY,
+            DicomSelector.SERIES,
+            DicomSelector.RENDER,
+            DicomSelector.REFERENCE
+    ));
 
+    /** De-duplicates a single source attr instance */
+    public void deduplicate(Map<String,Attributes> hashAttributes, Attributes attr) {
+        Attributes dedupped = new Attributes(attr);
+        for(DicomSelector selector : deduplicateSelectors) {
+            Attributes testAttr = selector.select(dedupped);
+            String hashKey = DicomAccess.hashAttributes(testAttr);
+            testAttr.setString(DEDUPPED_CREATER, DEDUPPED_HASH, VR.ST, hashKey);
+            selector.addTypeTo(testAttr);
+            hashAttributes.putIfAbsent(hashKey,testAttr);
+            dedupped.removeSelected(testAttr.tags());
+            DicomAccess.addToStrings(dedupped,DEDUPPED_CREATER, DEDUPPED_REF, hashKey);
+        }
+        hashAttributes.putIfAbsent(DicomAccess.hashAttributes(dedupped), dedupped);
+    }
 }

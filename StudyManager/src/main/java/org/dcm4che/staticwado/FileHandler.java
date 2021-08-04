@@ -13,7 +13,7 @@ public class FileHandler {
 
     private final File exportDir;
     private final File studyDir;
-    private boolean gzip = false;
+    private boolean gzip = true;
 
     public FileHandler(File exportDir, String studyUID) {
         this.exportDir = exportDir;
@@ -65,8 +65,8 @@ public class FileHandler {
                 int readLen = (int) Math.min(length-cumulativeLength, data.length);
                 len = is.read(data,0,readLen);
             }
-            String sha1 = String.format("%040x", new BigInteger(1, digest.digest()));
-            return sha1.substring(0,4)+"/"+sha1.substring(4,8) + "/"+sha1.substring(8);
+            String sha1 = new BigInteger(1, digest.digest()).toString(32);
+            return sha1.substring(0,2)+"/"+sha1.substring(2);
         } catch(NoSuchAlgorithmException e) {
             throw new Error(e);
         } catch (IOException e) {
