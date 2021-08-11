@@ -1,8 +1,22 @@
 package org.dcm4che.staticwado;
 import org.apache.commons.cli.*;
 import org.dcm4che.s3.UploadS3;
+import org.dcm4che3.data.UID;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class StaticWado {
+    public static final Map<String,String> TS_BY_TYPE = new HashMap<>();
+    static {
+        TS_BY_TYPE.put("jpll", UID.JPEGLosslessSV1);
+        TS_BY_TYPE.put("jll", UID.JPEGLosslessSV1);
+        TS_BY_TYPE.put("jls", UID.JPEGLSLossless);
+        TS_BY_TYPE.put("x-jls", UID.JPEGLSLossless);
+        TS_BY_TYPE.put("jp2", UID.JPEG2000Lossless);
+        TS_BY_TYPE.put("j2k", UID.JPEG2000Lossless);
+        TS_BY_TYPE.put("jpeg", UID.JPEGBaseline8Bit);
+    }
 
     private static CommandLine parseCommandLine(String[] args)
             throws ParseException {
@@ -12,11 +26,16 @@ public class StaticWado {
                 .hasArg()
                 .argName("directory")
                 .build());
+        opts.addOption(Option.builder("study")
+                .desc("Study UID to export")
+                .hasArgs()
+                .argName("Study Instance UID")
+                .build());
         opts.addOption(Option.builder("s3")
                 .desc("Upload to S3")
                 .build());
         opts.addOption(Option.builder("dry")
-                .desc("Dry run of upload (create updates studies.gz and list files to upload)")
+                .desc("Dry run of upload (list files to upload, and then actually uploads studies.gz)")
                 .build());
         opts.addOption(Option.builder( "bucket")
                 .desc("Bucket name to upload to")
@@ -24,22 +43,53 @@ public class StaticWado {
         opts.addOption(Option.builder( "region")
                 .desc("Bucket name to upload to")
                 .build());
+        opts.addOption(Option.builder("client")
+                .hasArg()
+                .desc("Client to upload/replace")
+                .build());
+        opts.addOption(Option.builder("contentType")
+                .hasArg()
+                .desc("Sets the transfer syntax appropriately for one of: jll,jls,jpeg,j2k")
+                .build());
+        opts.addOption(Option.builder("tsuid")
+                .hasArg()
+                .desc("Sets the transfer syntax directly")
+                .build());
+        opts.addOption(Option.builder("h").desc("Show help").build());
+
         CommandLineParser parser = new DefaultParser();
-        return parser.parse(opts, args);
+        CommandLine cl = parser.parse(opts, args);
+        if (cl.hasOption("h")) {
+            HelpFormatter formatter = new HelpFormatter();
+            formatter.printHelp(
+                    "StaticWado <options> <input-directories>",
+                    "Generates a DICOMweb static directory structure for the specified DICOM inputs", opts,
+                    "StaticWado -s3 -client /OHIF/platform/viewer/dist /dicomSrcDir");
+            System.exit(0);
+        }
+        return cl;
     }
 
     public static void main(String[] args) throws Exception {
         CommandLine cl = parseCommandLine(args);
         StudyManager manager = new StudyManager();
         String[] otherArgs = cl.getArgs();
-        if( otherArgs==null || otherArgs.length==0 ) otherArgs = new String[]{"c:/dicom"};
-        String exportDir = cl.getOptionValue('d', "c:/dicomweb");
+        String[] studies = cl.getOptionValues("study");
+        String exportDir = cl.getOptionValue('d', "/dicomweb");
+        if( otherArgs!=null && otherArgs.length>0 ) {
+            manager.setExportDir(exportDir);
+            String tsuid = cl.getOptionValue("tsuid");
+            String contentType = cl.getOptionValue("contentType");
+            if( contentType!=null && tsuid==null ) {
+                tsuid = TS_BY_TYPE.get(contentType);
+            }
+            manager.setTransferSyntaxUid(tsuid);
+            studies = manager.importStudies(otherArgs);
+        }
         if( cl.hasOption("s3") ) {
             UploadS3 uploadS3 = new UploadS3(cl);
-            uploadS3.upload(otherArgs);
-        } else {
-            manager.setExportDir(exportDir);
-            manager.importStudies(otherArgs);
+            uploadS3.uploadClient();
+            uploadS3.upload(exportDir,studies);
         }
     }
 }

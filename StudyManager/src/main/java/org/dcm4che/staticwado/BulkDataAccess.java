@@ -1,17 +1,16 @@
 package org.dcm4che.staticwado;
 
 import org.dcm4che3.data.*;
+import org.dcm4che3.imageio.codec.ImageWriterFactory;
 import org.dcm4che3.imageio.plugins.dcm.DicomImageReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.dcm4che3.imageio.plugins.dcm.DicomMetaData;
-
-import javax.imageio.ImageIO;
-import javax.imageio.ImageReader;
+import javax.imageio.*;
 import javax.imageio.stream.FileImageInputStream;
 import java.awt.image.*;
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -30,7 +29,7 @@ public class BulkDataAccess {
             UID.MPEG4HP42STEREO, UID.MPEG4HP422D, UID.MPEG4HP423D    ));
 
     public static final String IMAGE_JPEG_LOSSLESS = "image/jll";
-    public static final String IMAGE_JPEG_LS = "image/jls";
+    public static final String IMAGE_JPEG_LS = "image/x-jls";
 
     public static final String OCTET_STREAM = "application/octet-stream";
 
@@ -51,17 +50,45 @@ public class BulkDataAccess {
         CONTENT_TYPES.put(UID.ExplicitVRLittleEndian,OCTET_STREAM);
         CONTENT_TYPES.put(UID.JPEG2000,"image/jp2");
         CONTENT_TYPES.put(UID.JPEGBaseline8Bit,"image/jpeg");
-        CONTENT_TYPES.put(UID.RLELossless,"image/dicom-rle");
+        CONTENT_TYPES.put(UID.RLELossless,"image/x-dicom-rle");
         CONTENT_TYPES.put(UID.JPEGLossless,"image/jpeg");
         CONTENT_TYPES.put(UID.JPEGLosslessSV1, IMAGE_JPEG_LOSSLESS);
         CONTENT_TYPES.put(UID.JPEGLSLossless, IMAGE_JPEG_LS);
         CONTENT_TYPES.put(UID.JPEG2000Lossless, "image/j2k");
-        CONTENT_TYPES.put(UID.JPEG2000, "image/j2k");
+        CONTENT_TYPES.put(UID.JPEG2000, "image/jp2");
         CONTENT_TYPES.put(UID.MPEG2MPML, "video/mpeg");
     }
 
+    private ImageWriter compressor;
+    private String tsuid;
+    private ImageWriteParam compressParam;
+
     public BulkDataAccess(FileHandler handler) {
         this.handler = handler;
+    }
+
+    public void setTransferSyntaxUid(String tsuid) {
+        this.tsuid = tsuid;
+        if( tsuid==null ) {
+            compressor = null;
+            return;
+        }
+        ImageWriterFactory.ImageWriterParam param =
+                ImageWriterFactory.getImageWriterParam(tsuid);
+        if (param == null)
+            throw new UnsupportedOperationException(
+                    "Unsupported Transfer Syntax: " + tsuid);
+
+
+        this.compressor = ImageWriterFactory.getImageWriter(param);
+        this.compressParam = compressor.getDefaultWriteParam();
+        compressParam.setCompressionMode(
+                ImageWriteParam.MODE_EXPLICIT);
+        if( tsuid.equals(UID.JPEGLosslessSV1) ) {
+            compressParam.setCompressionType("LOSSLESS-1");
+        } else if( tsuid.equals(UID.JPEG2000Lossless) ) {
+            compressParam.setCompressionType("LOSSLESS");
+        }
     }
 
     /**
@@ -137,11 +164,10 @@ public class BulkDataAccess {
         long origOffset = getOffset(origUri);
         String baseUri = origUri.contains("?") ? origUri.substring(0,origUri.indexOf('?')) : origUri;
         String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/";
-        String framesContentType = chooseConvertType(attr,mapTsContentTypeFrames, defaultFramesContentType);
 
         for(int i=1; i<= frames; i++) {
             bulk.setURI(baseUri + "?offset="+(origOffset+imageLen*i-imageLen)+"&length="+imageLen);
-            convertImageFormat(attr, frameName+i, i, bulk, OCTET_STREAM, framesContentType);
+            convertImageFormat(attr, frameName+i, i, bulk, false);
         }
         bulk.setURI(origUri);
     }
@@ -159,19 +185,12 @@ public class BulkDataAccess {
         }
         String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/";
 
-        String contentType = chooseConvertType(attr,Collections.emptyMap(), null);
-        String framesContentType = chooseConvertType(attr,mapTsContentTypeFrames, defaultFramesContentType);
-        String hashContentType = chooseConvertType(attr,mapTsContentTypeHash, defaultHashContentType);
+        boolean fragmented = fragments.size()!=frames+1;
 
-        if( fragments.size()!=frames+1 ) {
-            // Causes a read/write to occur, which de-frags the input
-            contentType="fragmented";
-        }
-
-        log.warn("Source content type {} desired frames content type {} desired hashContent type {}", contentType, framesContentType, hashContentType);
+        log.debug("Source content type {} desired frames content type {} desired hashContent type {}", tsuid);
         for(int i=1; i<fragments.size(); i++) {
             BulkData bulk = (BulkData) fragments.get(i);
-            convertImageFormat(attr, frameName+i, i, bulk, contentType, framesContentType);
+            convertImageFormat(attr, frameName+i, i, bulk, fragmented);
         }
     }
 
@@ -242,13 +261,15 @@ public class BulkDataAccess {
             }
         }
     }
+
+    /** Saves normal bulkdata information, eg non-image */
     private void saveBulkdata(String studyUid, BulkData bulk, String contentType) {
         String uri = bulk.getURI();
         String hash = handler.hashOf(bulk.getFile(), getOffset(uri), getLength(uri));
         String bulkName = "bulkdata/" + hash + ".raw";
         saveMultipart(bulkName,bulk,contentType, SEPARATOR);
         String finalUri = studyUid + "/" + bulkName;
-        log.warn("Final uri = {} was {}", finalUri, bulk.getURI());
+        log.debug("Final uri = {} was {}", finalUri, bulk.getURI());
         bulk.setURI(finalUri);
     }
 
@@ -257,28 +278,44 @@ public class BulkDataAccess {
      *
      * It then writes it out to the given destination file as a multipart/related instance.
      */
-    public void convertImageFormat(Attributes attr, String dest, int frame, BulkData bulk, String sourceType, String desiredType) {
+    public void convertImageFormat(Attributes attr, String dest, int frame, BulkData bulk, boolean fragmented) {
         Object writeData = bulk;
-        String writeType = sourceType;
-        if( imageReader!=null && !sourceType.equals(desiredType) ) {
-            log.warn("Converting image from {} to {}", sourceType, desiredType);
+        String sourceTsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
+        String writeType = CONTENT_TYPES.get(sourceTsuid);
+        if( writeType==null ) writeType = OCTET_STREAM;
+        if( imageReader!=null && (tsuid!=null && !tsuid.equalsIgnoreCase(sourceTsuid) || fragmented) ) {
+            log.warn("Converting image from {} to {}", sourceTsuid, tsuid);
             try {
-                Raster r = imageReader.readRaster(frame-1, imageReader.getDefaultReadParam());
-                DataBuffer buf = r.getDataBuffer();
-                writeData = toBytes(buf);
-                if( writeData==null ) {
-                    log.error("Unable to convert data buffer from {} to bytes", buf.getClass());
-                    writeData = bulk;
+                WritableRaster r = (WritableRaster) imageReader.readRaster(frame-1, imageReader.getDefaultReadParam());
+                if( compressor!=null ) {
+                    ImageTypeSpecifier specifier = imageReader.getRawImageType(frame-1);
+                    BufferedImage bi = new BufferedImage(specifier.getColorModel(),r,false,null);
+                    try(ExtMemoryCacheImageOutputStream ios = new ExtMemoryCacheImageOutputStream(attr)) {
+                        compressor.setOutput(ios);
+                        compressor.write(null,new IIOImage(bi,null,null), compressParam);
+                        writeData = ios.toByteArray();
+                        writeType = CONTENT_TYPES.get(tsuid);
+                        log.warn("Converted {} to {} length {} type {}", sourceTsuid, tsuid, ((byte[]) writeData).length, writeType);
+                    }
                 } else {
-                    writeType = desiredType;
+                    log.debug("Write source type {} uncompressed", sourceTsuid);
+                    DataBuffer buf = r.getDataBuffer();
+                    writeData = toBytes(buf);
+                    writeType = OCTET_STREAM;
+                    if( writeData==null ) {
+                        log.error("Unable to convert data buffer from {} to bytes", buf.getClass());
+                        writeData = bulk;
+                    }
                 }
             } catch(IOException e) {
                 log.error("Couldn't convert image because {}",e);
                 e.printStackTrace();
             }
+        } else {
+            log.warn("Leaving {} as original type {}", sourceTsuid, writeType);
         }
         log.debug("Original bulkdata source is {}", bulk.getURI());
-        saveMultipart(dest, writeData, sourceType, SEPARATOR);
+        saveMultipart(dest, writeData, writeType, SEPARATOR);
     }
 
     public static byte[] toBytes(short[] data) {
@@ -316,15 +353,7 @@ public class BulkDataAccess {
         throw new UnsupportedOperationException("Unknown buffer type "+ buf.getClass());
     }
 
-    /** Choose the content type for this object. defaultContentType can be null to mean don't perform any mapping.
-     */
-    public String chooseConvertType(Attributes attr, Map<String,String> contentTypeMapping, String defaultContentType) {
-        String tsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
-        String contentType = contentTypeMapping.get(tsuid);
-        if( contentType==null && defaultContentType==null ) {
-                contentType = CONTENT_TYPES.get(tsuid);
-                return contentType==null ? OCTET_STREAM : contentType;
-        }
-        return contentType!=null ? contentType : defaultContentType;
+    public String getTransferSyntaxUid() {
+        return tsuid;
     }
 }

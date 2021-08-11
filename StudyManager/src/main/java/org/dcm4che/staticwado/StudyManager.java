@@ -23,11 +23,15 @@ public class StudyManager {
     File exportDir;
     List<Attributes> studies = new ArrayList<>();
     StudyMetadataEngine engine = new StudyMetadataEngine();
-        
+    private long lastLog;
+
+    // 5 second relog
+    private static final long RELOG_TIME = 1000L*1000L*1000L*5;
+
     /**
      * Imports a set of studies from the given directory input, and writes the data to the directory out.
      */
-    public List<Attributes> importStudies(String... importDirs) {
+    public String[] importStudies(String... importDirs) {
         bulkTempDir = new File(exportDir,"temp/"+Math.random());
         bulkTempDir.mkdirs();
         for(String importDir : importDirs) {
@@ -40,7 +44,7 @@ public class StudyManager {
         json.writeJson("../studies.json", studies.toArray(Attributes[]::new));
         handler.setGzip(true);
         json.writeJson("../studies", studies.toArray(Attributes[]::new));
-        return studies;
+        return studies.stream().map(study -> study.getString(Tag.StudyInstanceUID)).toArray(String[]::new);
     }
 
     private void importFile(File file) {
@@ -59,7 +63,7 @@ public class StudyManager {
         try {
             importDicom(file);
         } catch(DicomStreamException dse) {
-            log.warn("Skipping non-dicom {}", file);
+            log.debug("Skipping non-dicom {}", file);
         } catch(IOException e) {
             log.warn("Caught exception:"+e);
         }
@@ -69,14 +73,19 @@ public class StudyManager {
         Attributes attr = DicomAccess.readFile(file.getPath(), bulkTempDir);
         String studyUID = attr.getString(Tag.StudyInstanceUID);
         if( studyUID==null ) {
+            if( file.getName().contains("DICOMDIR") ) return;
             log.warn("Null studyUID on {}", file);
             return;
         }
         if( engine.isNewStudy(studyUID) ) {
-            log.warn("Adding a new study UID {}", studyUID);
             engine.finalizeStudy();
+            log.warn("Adding a new study UID {}", studyUID);
             Attributes studyAttr = engine.openNewStudy(attr, exportDir);
             studies.add(studyAttr);
+            lastLog = System.nanoTime();
+        } else if( System.nanoTime()-lastLog > RELOG_TIME ) {
+            lastLog = System.nanoTime();
+            log.warn("Continuing study {} on sop {}", studyUID, attr.getString(Tag.SOPInstanceUID));
         }
         engine.addObject(file, attr);
     }
@@ -85,4 +94,11 @@ public class StudyManager {
         this.exportDir = new File(name+"/studies");
     }
 
+    public String getTransferSyntaxUid() {
+        return engine.getTransferSyntaxUid();
+    }
+
+    public void setTransferSyntaxUid(String imageContentType) {
+        engine.setTransferSyntaxUid(imageContentType);
+    }
 }

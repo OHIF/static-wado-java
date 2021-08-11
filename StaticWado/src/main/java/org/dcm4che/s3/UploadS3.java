@@ -4,6 +4,8 @@ import org.dcm4che.staticwado.FileHandler;
 import org.dcm4che.staticwado.JsonWadoAccess;
 import org.dcm4che3.data.*;
 
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.util.*;
 
 import com.amazonaws.SdkClientException;
@@ -30,7 +32,9 @@ public class UploadS3 {
 
     private final String bucketName;
     private final String regionName;
-    private final boolean dryRun;
+    private boolean dryRun;
+    /** The location of the OHIF Client to import into S3 */
+    private final String clientImport;
 
     Map<String,Attributes> studies = new HashMap<>();
     private FileHandler handler;
@@ -40,15 +44,21 @@ public class UploadS3 {
         this.bucketName = cl.getOptionValue("bucket", "static-wado");
         this.regionName = cl.getOptionValue( "region", Regions.US_EAST_2.getName());
         this.dryRun = cl.hasOption("dry");
+        this.clientImport = cl.getOptionValue("client");
+        log.warn("Client import {}", this.clientImport);
     }
 
     /** Goes through all the source directories provided and uploads them to the destination.
      * Assumes that "studies" is the root studies directory, finding that in the parent or child.
      * If it isn't found, then throws an error.
-     *
-     * @param sources which are directory names to upload.
      */
-    public void upload(String... sources) {
+    public void upload(String exportDir, String... studyUids) {
+        String[] sources;
+        if( studyUids==null || studyUids.length==0 ) {
+            sources = new String[]{exportDir};
+        } else {
+            sources = Arrays.stream(studyUids).map(uid -> (exportDir + "/studies/"+uid)).toArray(String[]::new);
+        }
         try {
             for(String src : sources) {
                 File fileSrc = new File(src).getAbsoluteFile();
@@ -73,8 +83,11 @@ public class UploadS3 {
             }
             if( studiesFile!=null ) {
                 log.warn("Creating new studies file {} and uploading it", studiesFile);
+                boolean wasDry = dryRun;
+                dryRun = false;
                 new JsonWadoAccess(new FileHandler(studiesFile.getParentFile())).writeJson("studies",studies.values().toArray(Attributes[]::new));
                 uploadS3("dicomweb/", studiesFile, true);
+                dryRun = wasDry;
             }
         } catch(IOException e) {
             log.warn("Unable to upload because {}", e);
@@ -103,6 +116,43 @@ public class UploadS3 {
              }
              uploadS3(path,file,false);
          }
+    }
+
+    /** Uploads a client directory if set */
+    public void uploadClient() throws IOException {
+        if( clientImport==null ) return;
+        log.warn("Uploading client from {}", clientImport);
+        File clientDir = new File(clientImport);
+        File indexFile = new File(clientDir,"index.html.gz");
+        // TODO - execute gzip -r <clientDir> if the index.html exists but .gz doesn't
+        // Make a copy of index.html.gz
+        try(FileInputStream fis = new FileInputStream(indexFile);
+            FileOutputStream fos = new FileOutputStream(new File(clientDir,"viewer.gz"))) {
+            byte[] data = new byte[16384];
+            int len = fis.read(data);
+            while(len!=-1) {
+                fos.write(data,0,len);
+                len = fis.read(data);
+            }
+        }
+        uploadAll(null,clientDir);
+
+    }
+
+    /** Just does an upload of everything in the file location, to the sub-string of the given path */
+    public void uploadAll(String path, File file) throws IOException {
+        if( file.isDirectory() ) {
+            if( path==null ) {
+                path = "";
+            } else {
+                path = path + file.getName() + "/";
+            }
+            for(File subFile : file.listFiles() ) {
+                uploadAll(path,subFile);
+            }
+        } else {
+            uploadS3(path,file,false);
+        }
     }
 
     /** Uploads from the given src file, to the destination path, of the given content type.
@@ -173,7 +223,13 @@ public class UploadS3 {
         String name = s3Name(src);
         if( name.endsWith(".js") ) return "text/javascript";
         if( name.endsWith(".css") ) return "text/css";
-        if( JSON_NAMES.contains(name) ) return "application/dicom+json";
+        if( name.endsWith(".html") ) return "text/html";
+        if( name.endsWith(".txt") ) return "text/plain";
+        if( name.endsWith(".xml") ) return "text/xml";
+        if( name.endsWith(".png") ) return "image/png";
+        if( name.endsWith(".svg") ) return "image/svg";
+        if( name.endsWith("viewer") ) return "text/html";
+        if( JSON_NAMES.contains(name) ) return "application/json";
         return "application/octet-stream";
     }
 

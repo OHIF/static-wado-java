@@ -18,6 +18,7 @@ public class StudyMetadataEngine {
     StudyData studyData;
     FileHandler handler;
     private BulkDataAccess bulkDataAccess;
+    private String transferSyntaxUid;
 
     public boolean isNewStudy(String testUID) {
         return studyData == null || !studyData.getStudyUid().equals(testUID);
@@ -46,10 +47,19 @@ public class StudyMetadataEngine {
         }
     }
 
+    public void setTransferSyntaxUid(String transferSyntaxUid) {
+        this.transferSyntaxUid = transferSyntaxUid;
+    }
+
+    public String getTransferSyntaxUid() {
+        return transferSyntaxUid;
+    }
+
     public Attributes openNewStudy(Attributes sopAttr, File exportDir) {
         studyData = new StudyData(sopAttr);
         handler = new FileHandler(exportDir, studyData.getStudyUid());
         bulkDataAccess = new BulkDataAccess(handler);
+        bulkDataAccess.setTransferSyntaxUid(transferSyntaxUid);
         handler.setGzip(true);
         return studyData.getStudyAttributes();
     }

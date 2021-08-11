@@ -56,12 +56,25 @@ public class StudyData {
             return;
         }
         String seriesUid = attr.getString(Tag.SeriesInstanceUID);
+        addMissing(attr);
         Attributes seriesData = series.computeIfAbsent(seriesUid, (key) -> {
             appendModality(attr.getString(Tag.Modality));
-            return DicomSelector.SERIES.select(attr);
+            Attributes seriesAttr = DicomSelector.SERIES.select(attr);
+            return seriesAttr;
         });
         log.debug("Adding series {} with contents {}", seriesUid, seriesData);
         seriesData.setInt(Tag.NumberOfSeriesRelatedInstances,VR.IS, 1+seriesData.getInt(Tag.NumberOfSeriesRelatedInstances,0));
+    }
+
+    public void addMissing(Attributes seriesAttr) {
+        if( !seriesAttr.contains(Tag.SeriesDescription) ) {
+            log.debug("Series {} is missing series description", seriesAttr.getString(Tag.SeriesInstanceUID));
+            seriesAttr.setNull(Tag.SeriesDescription, VR.ST);
+        }
+        if( !seriesAttr.contains(Tag.SeriesNumber) ) {
+            log.debug("Series {} is missing series number", seriesAttr.getString(Tag.SeriesInstanceUID));
+            seriesAttr.setInt(Tag.SeriesNumber, VR.IS, series.size()+1);
+        }
     }
 
     /** Updates the number of series and number of instances */

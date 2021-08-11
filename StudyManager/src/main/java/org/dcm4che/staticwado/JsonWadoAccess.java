@@ -3,10 +3,7 @@ package org.dcm4che.staticwado;
 import org.dcm4che3.data.Attributes;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -80,6 +77,9 @@ public class JsonWadoAccess {
             new JSONReader(parser).readDatasets((fmi,attr) -> {
                 ret.add(attr);
             });
+        } catch(FileNotFoundException e) {
+            log.warn("Studies list not found, starting fresh");
+            return Collections.emptyList();
         }
         return ret;
     }
