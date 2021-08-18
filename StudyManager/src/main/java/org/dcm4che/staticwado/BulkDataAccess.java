@@ -30,6 +30,14 @@ public class BulkDataAccess {
 
     public static final String IMAGE_JPEG_LOSSLESS = "image/jll";
     public static final String IMAGE_JPEG_LS = "image/x-jls";
+    public static final String IMAGE_JPEG = "image/jpeg";
+    public static final String VIDEO_H264 = "video/mp4";
+
+    public static final Map<String,String> EXTENSIONS = new HashMap<>();
+    static {
+        EXTENSIONS.put(IMAGE_JPEG,"jpg");
+        EXTENSIONS.put(VIDEO_H264,"mp4");
+    }
 
     public static final String OCTET_STREAM = "application/octet-stream";
 
@@ -57,10 +65,14 @@ public class BulkDataAccess {
         CONTENT_TYPES.put(UID.JPEG2000Lossless, "image/j2k");
         CONTENT_TYPES.put(UID.JPEG2000, "image/jp2");
         CONTENT_TYPES.put(UID.MPEG2MPML, "video/mpeg");
+        CONTENT_TYPES.put(UID.MPEG4HP41, VIDEO_H264);
+        CONTENT_TYPES.put(UID.MPEG4HP41BD, VIDEO_H264);
+        CONTENT_TYPES.put(UID.MPEG4HP422D, VIDEO_H264);
+        CONTENT_TYPES.put(UID.MPEG4HP423D, VIDEO_H264);
     }
 
     private ImageWriter compressor;
-    private String tsuid;
+    private String tsuid = UID.ImplicitVRLittleEndian;
     private ImageWriteParam compressParam;
 
     public BulkDataAccess(FileHandler handler) {
@@ -69,7 +81,7 @@ public class BulkDataAccess {
 
     public void setTransferSyntaxUid(String tsuid) {
         this.tsuid = tsuid;
-        if( tsuid==null ) {
+        if( tsuid==null || UID.ImplicitVRLittleEndian.equals(tsuid) || UID.ExplicitVRLittleEndian.equals(tsuid)) {
             compressor = null;
             return;
         }
@@ -173,15 +185,42 @@ public class BulkDataAccess {
     }
 
     public static boolean isMultiframe(Attributes attr) {
-        String tsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
-        return MULTIFRAME_TSUIDS.contains(tsuid);
+        return MULTIFRAME_TSUIDS.contains(attr.getString(Tag.AvailableTransferSyntaxUID));
+    }
+
+    public static String getContentType(Attributes attr) {
+        String tsuid = attr.getString(Tag.TransferSyntaxUID, attr.getString(Tag.AvailableTransferSyntaxUID));
+        if( tsuid==null ) return OCTET_STREAM;
+        String contentType = CONTENT_TYPES.get(tsuid);
+        if( contentType==null ) {
+            log.warn("Unknown content type for transfer syntax {}", tsuid);
+            return OCTET_STREAM;
+        }
+        return contentType;
+    }
+
+    public void saveVideo(Attributes attr, String seriesUid, String sopUid, Fragments fragments) {
+        String contentType = getContentType(attr);
+        String extension = EXTENSIONS.get(contentType);
+        String dest = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/1"+(extension==null ? "" : ("."+extension));
+        log.warn("Writing single part {} content type {}", dest, contentType);
+        handler.setGzip(false);
+        try(OutputStream os = handler.openForWrite(dest)) {
+            for(int i=1; i< fragments.size(); i++) {
+                copyFrom(fragments.get(i),os);
+            }
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
+        handler.setGzip(true);
     }
 
     public void saveCompressed(Attributes attr, String seriesUid, String sopUid, Fragments fragments) {
         int frames = attr.getInt(Tag.NumberOfFrames,1);
 
         if( isMultiframe(attr) ) {
-            throw new Error("No implementation of video/multiframe images");
+            saveVideo(attr,seriesUid,sopUid, fragments);
+            return;
         }
         String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/";
 
@@ -217,6 +256,23 @@ public class BulkDataAccess {
         } catch(IOException e) {
             e.printStackTrace();
         }
+    }
+
+    /** Saves an object as singlepart */
+    public void saveSinglepart(String dest, Object value, String contentType) {
+        String extension = EXTENSIONS.get(contentType);
+        if( extension==null ) {
+            log.warn("No singlepart for {}", contentType);
+            return;
+        }
+        log.warn("Writing single part {}.{} content type {}", dest, extension, contentType);
+        handler.setGzip(false);
+        try(OutputStream os = handler.openForWrite(dest+"."+extension)) {
+            copyFrom(value,os);
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
+        handler.setGzip(true);
     }
 
     private static final Pattern OFFSET_REGEXP = Pattern.compile("offset=([0-9]+)");
@@ -295,6 +351,7 @@ public class BulkDataAccess {
                         compressor.write(null,new IIOImage(bi,null,null), compressParam);
                         writeData = ios.toByteArray();
                         writeType = CONTENT_TYPES.get(tsuid);
+                        handler.setGzip(false);
                         log.warn("Converted {} to {} length {} type {}", sourceTsuid, tsuid, ((byte[]) writeData).length, writeType);
                     }
                 } else {
@@ -312,10 +369,12 @@ public class BulkDataAccess {
                 e.printStackTrace();
             }
         } else {
-            log.warn("Leaving {} as original type {}", sourceTsuid, writeType);
+            log.warn("Leaving {} as original type {} imageReader {} tsuid {}", sourceTsuid, writeType, imageReader, tsuid);
         }
         log.debug("Original bulkdata source is {}", bulk.getURI());
         saveMultipart(dest, writeData, writeType, SEPARATOR);
+        saveSinglepart(dest, writeData, writeType);
+        handler.setGzip(true);
     }
 
     public static byte[] toBytes(short[] data) {

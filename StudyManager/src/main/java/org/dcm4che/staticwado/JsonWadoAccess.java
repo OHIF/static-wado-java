@@ -84,11 +84,15 @@ public class JsonWadoAccess {
         return ret;
     }
 
-    public static void readStudiesDirectory(Map<String,Attributes> studies, File file) throws IOException {
-        List<Attributes> studiesArr = JsonWadoAccess.read( file);
-        for(Attributes attr : studiesArr) {
-            String studyUID = attr.getString(Tag.StudyInstanceUID);
-            studies.put(studyUID,attr);
+    public static void readStudiesDirectory(Map<String,Attributes> studies, File file) {
+        try {
+            List<Attributes> studiesArr = JsonWadoAccess.read(file);
+            for (Attributes attr : studiesArr) {
+                String studyUID = attr.getString(Tag.StudyInstanceUID);
+                studies.put(studyUID, attr);
+            }
+        } catch(IOException e) {
+            log.warn("No studies directory read for {}", file);
         }
     }
 

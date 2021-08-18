@@ -3,7 +3,10 @@ package org.dcm4che.staticwado;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.io.DicomStreamException;
@@ -21,9 +24,10 @@ public class StudyManager {
 
     File bulkTempDir;
     File exportDir;
-    List<Attributes> studies = new ArrayList<>();
+    Map<String, Attributes> studies = new HashMap<>();
     StudyMetadataEngine engine = new StudyMetadataEngine();
     private long lastLog;
+    private List<String> addedStudies = new ArrayList<>();
 
     // 5 second relog
     private static final long RELOG_TIME = 1000L*1000L*1000L*5;
@@ -41,10 +45,10 @@ public class StudyManager {
         FileHandler handler = new FileHandler(exportDir);
         JsonWadoAccess json = new JsonWadoAccess(handler);
         json.setPretty(true);
-        json.writeJson("../studies.json", studies.toArray(Attributes[]::new));
+        json.writeJson("../studies.json", studies.values().toArray(Attributes[]::new));
         handler.setGzip(true);
-        json.writeJson("../studies", studies.toArray(Attributes[]::new));
-        return studies.stream().map(study -> study.getString(Tag.StudyInstanceUID)).toArray(String[]::new);
+        json.writeJson("../studies", studies.values().toArray(Attributes[]::new));
+        return addedStudies.toArray(String[]::new);
     }
 
     private void importFile(File file) {
@@ -81,7 +85,8 @@ public class StudyManager {
             engine.finalizeStudy();
             log.warn("Adding a new study UID {}", studyUID);
             Attributes studyAttr = engine.openNewStudy(attr, exportDir);
-            studies.add(studyAttr);
+            studies.put(studyUID, studyAttr);
+            addedStudies.add(studyUID);
             lastLog = System.nanoTime();
         } else if( System.nanoTime()-lastLog > RELOG_TIME ) {
             lastLog = System.nanoTime();
@@ -92,6 +97,7 @@ public class StudyManager {
 
     public void setExportDir(String name) {
         this.exportDir = new File(name+"/studies");
+        JsonWadoAccess.readStudiesDirectory(studies,new File(name+"/studies.gz"));
     }
 
     public String getTransferSyntaxUid() {

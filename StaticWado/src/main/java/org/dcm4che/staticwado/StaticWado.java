@@ -16,6 +16,9 @@ public class StaticWado {
         TS_BY_TYPE.put("jp2", UID.JPEG2000Lossless);
         TS_BY_TYPE.put("j2k", UID.JPEG2000Lossless);
         TS_BY_TYPE.put("jpeg", UID.JPEGBaseline8Bit);
+        TS_BY_TYPE.put("lei", UID.ImplicitVRLittleEndian);
+        TS_BY_TYPE.put("lee", UID.ExplicitVRLittleEndian);
+        TS_BY_TYPE.put("raw", null);
     }
 
     private static CommandLine parseCommandLine(String[] args)
@@ -79,7 +82,7 @@ public class StaticWado {
         if( otherArgs!=null && otherArgs.length>0 ) {
             manager.setExportDir(exportDir);
             String tsuid = cl.getOptionValue("tsuid");
-            String contentType = cl.getOptionValue("contentType");
+            String contentType = cl.getOptionValue("contentType","lei");
             if( contentType!=null && tsuid==null ) {
                 tsuid = TS_BY_TYPE.get(contentType);
             }
