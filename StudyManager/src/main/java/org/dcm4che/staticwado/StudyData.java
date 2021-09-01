@@ -95,12 +95,17 @@ public class StudyData {
         return metadata.values().stream().map( DicomSelector.INSTANCE::select ).toArray(Attributes[]::new);
     }
 
+    public Attributes[] getInstances(String seriesUid) {
+        return metadata.values().stream().filter(attr -> seriesUid.equals(attr.getString(Tag.SeriesInstanceUID)))
+                .map( DicomSelector.INSTANCE::select ).toArray(Attributes[]::new);
+    }
+
     public Collection<String> getSeriesUids() {
         return series.keySet();
     }
 
-    public Attributes[] getMetadata(String seriesUID) {
-        return metadata.values().stream().filter(attr -> seriesUID.equals(attr.getString(Tag.SeriesInstanceUID)))
+    public Attributes[] getMetadata(String seriesUid) {
+        return metadata.values().stream().filter(attr -> seriesUid.equals(attr.getString(Tag.SeriesInstanceUID)))
                 .toArray(Attributes[]::new);
     }
 }

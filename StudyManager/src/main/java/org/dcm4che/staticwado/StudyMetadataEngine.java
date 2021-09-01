@@ -38,6 +38,12 @@ public class StudyMetadataEngine {
             json.writeJson("metadata", studyData.getMetadata());
             studyData.getSeriesUids().forEach(seriesUid -> {
                 json.writeJson("series/" + seriesUid + "/metadata", studyData.getMetadata(seriesUid));
+                json.writeJson( "series/" + seriesUid +"/instances", studyData.getInstances(seriesUid));
+            });
+            Arrays.stream(studyData.getMetadata()).forEach(item -> {
+               String seriesUid = item.getString(Tag.SeriesInstanceUID);
+               String sopUid = item.getString(Tag.SOPInstanceUID);
+               json.writeJson("series/"+seriesUid+"/instances/"+sopUid+"/metadata", new Attributes[]{item});
             });
             Attributes[] deduplicated = deduplicate(studyData.getInstances());
             json.writeJson("deduplicated", deduplicated);

@@ -26,17 +26,21 @@ public class BulkDataAccess {
 
     public static final Set<String> MULTIFRAME_TSUIDS = new HashSet<>(Arrays.asList(
             UID.MPEG2MPHL, UID.MPEG2MPML, UID.MPEG4HP41, UID.MPEG4HP41BD,
-            UID.MPEG4HP42STEREO, UID.MPEG4HP422D, UID.MPEG4HP423D    ));
+            UID.MPEG4HP42STEREO, UID.MPEG4HP422D, UID.MPEG4HP423D, UID.MPEG4HP42STEREO,
+            UID.HEVCMP51, UID.HEVCM10P51));
 
     public static final String IMAGE_JPEG_LOSSLESS = "image/jll";
     public static final String IMAGE_JPEG_LS = "image/x-jls";
     public static final String IMAGE_JPEG = "image/jpeg";
     public static final String VIDEO_H264 = "video/mp4";
+    public static final String VIDEO_H265 = "video/mp4";
+    public static final String VIDEO_MPEG2 = "video/mpeg";
 
     public static final Map<String,String> EXTENSIONS = new HashMap<>();
     static {
         EXTENSIONS.put(IMAGE_JPEG,"jpg");
         EXTENSIONS.put(VIDEO_H264,"mp4");
+        EXTENSIONS.put(VIDEO_MPEG2, "mpeg");
     }
 
     public static final String OCTET_STREAM = "application/octet-stream";
@@ -64,11 +68,13 @@ public class BulkDataAccess {
         CONTENT_TYPES.put(UID.JPEGLSLossless, IMAGE_JPEG_LS);
         CONTENT_TYPES.put(UID.JPEG2000Lossless, "image/j2k");
         CONTENT_TYPES.put(UID.JPEG2000, "image/jp2");
-        CONTENT_TYPES.put(UID.MPEG2MPML, "video/mpeg");
+        CONTENT_TYPES.put(UID.MPEG2MPML, VIDEO_MPEG2);
         CONTENT_TYPES.put(UID.MPEG4HP41, VIDEO_H264);
         CONTENT_TYPES.put(UID.MPEG4HP41BD, VIDEO_H264);
         CONTENT_TYPES.put(UID.MPEG4HP422D, VIDEO_H264);
         CONTENT_TYPES.put(UID.MPEG4HP423D, VIDEO_H264);
+        CONTENT_TYPES.put(UID.HEVCMP51, VIDEO_H265);
+        CONTENT_TYPES.put(UID.HEVCM10P51, VIDEO_H265);
     }
 
     private ImageWriter compressor;
@@ -205,14 +211,16 @@ public class BulkDataAccess {
         String dest = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/1"+(extension==null ? "" : ("."+extension));
         log.warn("Writing single part {} content type {}", dest, contentType);
         handler.setGzip(false);
+        long length = 0;
         try(OutputStream os = handler.openForWrite(dest)) {
             for(int i=1; i< fragments.size(); i++) {
-                copyFrom(fragments.get(i),os);
+                length += copyFrom(fragments.get(i),os);
             }
         } catch(IOException e) {
             e.printStackTrace();
         }
         handler.setGzip(true);
+        attr.setValue(Tag.PixelData,VR.OB, new BulkData(null,dest+"?length="+length, false));
     }
 
     public void saveCompressed(Attributes attr, String seriesUid, String sopUid, Fragments fragments) {
@@ -295,10 +303,10 @@ public class BulkDataAccess {
         return length;
     }
 
-    public void copyFrom(Object value, OutputStream os) throws IOException {
+    public long copyFrom(Object value, OutputStream os) throws IOException {
         if( value instanceof byte[] ) {
             os.write((byte[]) value);
-            return;
+            return ((byte[]) value).length;
         }
         BulkData bulk = (BulkData) value;
         String uri = bulk.getURI();
@@ -315,6 +323,7 @@ public class BulkDataAccess {
                 currentLength += readLen;
                 os.write(buffer,0,readLen);
             }
+            return length;
         }
     }
 
