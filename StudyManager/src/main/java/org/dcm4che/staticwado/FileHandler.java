@@ -34,11 +34,14 @@ public class FileHandler {
         }
     }
 
+    /** Opens the given destination file for writing, as either gzip or non-gzip, AND deletes any older version of the wrong type (gzip or non-gzip). */
     public OutputStream openForWrite(String dest) throws IOException {
         mkdirs(dest);
         if( gzip ) {
+            new File(studyDir,dest).delete();
             return new GZIPOutputStream(new FileOutputStream(new File(studyDir,dest+".gz")));
         } else {
+            new File(studyDir,dest+".gz").delete();
             return new FileOutputStream(new File(studyDir,dest));
         }
     }

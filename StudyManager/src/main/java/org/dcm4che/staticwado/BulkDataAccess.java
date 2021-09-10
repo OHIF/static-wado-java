@@ -10,7 +10,6 @@ import javax.imageio.*;
 import javax.imageio.stream.FileImageInputStream;
 import java.awt.image.*;
 import java.io.*;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -24,7 +23,7 @@ public class BulkDataAccess {
 
     FileHandler handler;
 
-    public static final Set<String> MULTIFRAME_TSUIDS = new HashSet<>(Arrays.asList(
+    public static final Set<String> VIDEO_TSUIDS = new HashSet<>(Arrays.asList(
             UID.MPEG2MPHL, UID.MPEG2MPML, UID.MPEG4HP41, UID.MPEG4HP41BD,
             UID.MPEG4HP42STEREO, UID.MPEG4HP422D, UID.MPEG4HP423D, UID.MPEG4HP42STEREO,
             UID.HEVCMP51, UID.HEVCM10P51));
@@ -32,8 +31,9 @@ public class BulkDataAccess {
     public static final String IMAGE_JPEG_LOSSLESS = "image/jll";
     public static final String IMAGE_JPEG_LS = "image/x-jls";
     public static final String IMAGE_JPEG = "image/jpeg";
+    public static final String IMAGE_JP2 = "image/jp2";
     public static final String VIDEO_H264 = "video/mp4";
-    public static final String VIDEO_H265 = "video/mp4";
+    public static final String VIDEO_H265 = "video/H265";
     public static final String VIDEO_MPEG2 = "video/mpeg";
 
     public static final Map<String,String> EXTENSIONS = new HashMap<>();
@@ -45,13 +45,6 @@ public class BulkDataAccess {
 
     public static final String OCTET_STREAM = "application/octet-stream";
 
-    public static final Map<String,String> mapTsContentTypeFrames = new HashMap<>();
-    private static String defaultFramesContentType = OCTET_STREAM;
-
-    /** Map hash tree values to image/jls by default, or to video/* if it is video */
-    public static final Map<String,String> mapTsContentTypeHash = new HashMap<>();
-    private static String defaultHashContentType = "image/jls";
-
     public static final String SEPARATOR = "BOUNDARY_FIXED_32934857949532587";
 
     private final DicomImageReader imageReader =  (DicomImageReader) ImageIO.getImageReadersByFormatName("DICOM").next();
@@ -60,14 +53,13 @@ public class BulkDataAccess {
     static {
         CONTENT_TYPES.put(UID.ImplicitVRLittleEndian,OCTET_STREAM);
         CONTENT_TYPES.put(UID.ExplicitVRLittleEndian,OCTET_STREAM);
-        CONTENT_TYPES.put(UID.JPEG2000,"image/jp2");
-        CONTENT_TYPES.put(UID.JPEGBaseline8Bit,"image/jpeg");
+        CONTENT_TYPES.put(UID.JPEGBaseline8Bit,IMAGE_JPEG);
         CONTENT_TYPES.put(UID.RLELossless,"image/x-dicom-rle");
-        CONTENT_TYPES.put(UID.JPEGLossless,"image/jpeg");
+        CONTENT_TYPES.put(UID.JPEGLossless,IMAGE_JPEG);
         CONTENT_TYPES.put(UID.JPEGLosslessSV1, IMAGE_JPEG_LOSSLESS);
         CONTENT_TYPES.put(UID.JPEGLSLossless, IMAGE_JPEG_LS);
-        CONTENT_TYPES.put(UID.JPEG2000Lossless, "image/j2k");
-        CONTENT_TYPES.put(UID.JPEG2000, "image/jp2");
+        CONTENT_TYPES.put(UID.JPEG2000Lossless, IMAGE_JP2);
+        CONTENT_TYPES.put(UID.JPEG2000, IMAGE_JP2);
         CONTENT_TYPES.put(UID.MPEG2MPML, VIDEO_MPEG2);
         CONTENT_TYPES.put(UID.MPEG4HP41, VIDEO_H264);
         CONTENT_TYPES.put(UID.MPEG4HP41BD, VIDEO_H264);
@@ -162,12 +154,11 @@ public class BulkDataAccess {
     }
 
     public void saveUncompressed(Attributes attr, String seriesUid, String sopUid, BulkData bulk) {
-        String bulkBase = "series/" + seriesUid + "/instances/" + sopUid + "/frames/";
         int rows = attr.getInt(Tag.Rows,0);
         int cols = attr.getInt(Tag.Columns,0);
         int bits = attr.getInt(Tag.BitsAllocated, 8);
         int samples = attr.getInt(Tag.SamplesPerPixel,1);
-        long imageLen = rows*cols*bits*samples;
+        long imageLen = rows*((long) cols)*bits*samples;
         int frames = attr.getInt(Tag.NumberOfFrames,1);
         if( imageLen % 8 !=0 ) {
             throw new UnsupportedOperationException("Can't handle partial bit images.");
@@ -190,8 +181,8 @@ public class BulkDataAccess {
         bulk.setURI(origUri);
     }
 
-    public static boolean isMultiframe(Attributes attr) {
-        return MULTIFRAME_TSUIDS.contains(attr.getString(Tag.AvailableTransferSyntaxUID));
+    public static boolean isVideo(Attributes attr) {
+        return VIDEO_TSUIDS.contains(attr.getString(Tag.AvailableTransferSyntaxUID));
     }
 
     public static String getContentType(Attributes attr) {
@@ -206,27 +197,31 @@ public class BulkDataAccess {
     }
 
     public void saveVideo(Attributes attr, String seriesUid, String sopUid, Fragments fragments) {
+        String dest = saveRawFragments(attr,seriesUid,sopUid,fragments, 1, fragments.size(), null);
+        attr.setValue(Tag.PixelData, VR.OB, new BulkData(null, dest, false));
+    }
+
+    public String saveRawFragments(Attributes attr, String seriesUid, String sopUid, Fragments fragments, int start, int end, String frameName) {
         String contentType = getContentType(attr);
-        String extension = EXTENSIONS.get(contentType);
-        String dest = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/1"+(extension==null ? "" : ("."+extension));
+        String dest = "series/"+seriesUid + "/instances/"+ sopUid + "/rendered"+(frameName==null ? "" : ("/"+frameName));
         log.warn("Writing single part {} content type {}", dest, contentType);
         handler.setGzip(false);
         long length = 0;
         try(OutputStream os = handler.openForWrite(dest)) {
-            for(int i=1; i< fragments.size(); i++) {
+            for(int i=start; i< end; i++) {
                 length += copyFrom(fragments.get(i),os);
             }
         } catch(IOException e) {
             e.printStackTrace();
         }
         handler.setGzip(true);
-        attr.setValue(Tag.PixelData,VR.OB, new BulkData(null,dest+"?length="+length, false));
+        return dest + "?length=" + length;
     }
 
     public void saveCompressed(Attributes attr, String seriesUid, String sopUid, Fragments fragments) {
         int frames = attr.getInt(Tag.NumberOfFrames,1);
 
-        if( isMultiframe(attr) ) {
+        if( isVideo(attr) ) {
             saveVideo(attr,seriesUid,sopUid, fragments);
             return;
         }
@@ -234,7 +229,6 @@ public class BulkDataAccess {
 
         boolean fragmented = fragments.size()!=frames+1;
 
-        log.debug("Source content type {} desired frames content type {} desired hashContent type {}", tsuid);
         for(int i=1; i<fragments.size(); i++) {
             BulkData bulk = (BulkData) fragments.get(i);
             convertImageFormat(attr, frameName+i, i, bulk, fragmented);
@@ -266,16 +260,17 @@ public class BulkDataAccess {
         }
     }
 
-    /** Saves an object as singlepart */
+    /** Saves an object as singlepart to the /rendered directory.  */
     public void saveSinglepart(String dest, Object value, String contentType) {
         String extension = EXTENSIONS.get(contentType);
-        if( extension==null ) {
+        if (extension == null) {
             log.warn("No singlepart for {}", contentType);
             return;
         }
-        log.warn("Writing single part {}.{} content type {}", dest, extension, contentType);
+        extension = "."+extension;
+        log.warn("Writing single part {}{} content type {}", dest, extension, contentType);
         handler.setGzip(false);
-        try(OutputStream os = handler.openForWrite(dest+"."+extension)) {
+        try(OutputStream os = handler.openForWrite(dest+extension)) {
             copyFrom(value,os);
         } catch(IOException e) {
             e.printStackTrace();
@@ -339,9 +334,11 @@ public class BulkDataAccess {
     }
 
     /**
-     * Converts the image format from the one it is in to an acceptable one for OHIF display purposes.
+     * Converts the image format from the one it is in to the specified output format, adding the format to
+     * the AvailableTransferSyntaxUID list.
      *
-     * It then writes it out to the given destination file as a multipart/related instance.
+     * It then writes it out to the given destination file in the specified format.  Formats can be multipart
+     * encapsulated or raw.
      */
     public void convertImageFormat(Attributes attr, String dest, int frame, BulkData bulk, boolean fragmented) {
         Object writeData = bulk;
@@ -360,6 +357,7 @@ public class BulkDataAccess {
                         compressor.write(null,new IIOImage(bi,null,null), compressParam);
                         writeData = ios.toByteArray();
                         writeType = CONTENT_TYPES.get(tsuid);
+                        attr.setString(Tag.AvailableTransferSyntaxUID,VR.UI, tsuid);
                         handler.setGzip(false);
                         log.warn("Converted {} to {} length {} type {}", sourceTsuid, tsuid, ((byte[]) writeData).length, writeType);
                     }
@@ -372,9 +370,10 @@ public class BulkDataAccess {
                         log.error("Unable to convert data buffer from {} to bytes", buf.getClass());
                         writeData = bulk;
                     }
+                    attr.setString(Tag.AvailableTransferSyntaxUID,VR.UI, UID.ImplicitVRLittleEndian);
                 }
             } catch(IOException e) {
-                log.error("Couldn't convert image because {}",e);
+                log.error("Couldn't convert image because {}",(Object) e);
                 e.printStackTrace();
             }
         } else {
