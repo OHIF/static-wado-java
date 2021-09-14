@@ -15,6 +15,25 @@ import java.util.*;
 public class StudyMetadataEngine {
     private static final Logger log = LoggerFactory.getLogger(StudyMetadataEngine.class);
 
+    public boolean isIncludeInstances() {
+        return includeInstances;
+    }
+
+    public void setIncludeInstances(boolean includeInstances) {
+        this.includeInstances = includeInstances;
+    }
+
+    public boolean isIncludeDeduplicated() {
+        return includeDeduplicated;
+    }
+
+    public void setIncludeDeduplicated(boolean includeDeduplicated) {
+        this.includeDeduplicated = includeDeduplicated;
+    }
+
+    boolean includeInstances = false;
+    boolean includeDeduplicated = false;
+
     StudyData studyData;
     FileHandler handler;
     private BulkDataAccess bulkDataAccess;
@@ -35,7 +54,7 @@ public class StudyMetadataEngine {
             json.writeJson("studies", studyData.getStudyAttributes());
             json.writeJson("series", studyData.getSeries());
             json.writeJson("instances", instances);
-            json.writeJson("metadata", studyData.getMetadata());
+            if( includeInstances ) json.writeJson("metadata", studyData.getMetadata());
             studyData.getSeriesUids().forEach(seriesUid -> {
                 json.writeJson("series/" + seriesUid + "/metadata", studyData.getMetadata(seriesUid));
                 json.writeJson( "series/" + seriesUid +"/instances", studyData.getInstances(seriesUid));
@@ -45,8 +64,10 @@ public class StudyMetadataEngine {
                String sopUid = item.getString(Tag.SOPInstanceUID);
                json.writeJson("series/"+seriesUid+"/instances/"+sopUid+"/metadata", new Attributes[]{item});
             });
-            Attributes[] deduplicated = deduplicate(studyData.getInstances());
-            json.writeJson("deduplicated", deduplicated);
+            if( includeDeduplicated ) {
+                Attributes[] deduplicated = deduplicate(studyData.getInstances());
+                json.writeJson("deduplicated", deduplicated);
+            }
         } finally {
             studyData = null;
             handler = null;

@@ -107,4 +107,12 @@ public class StudyManager {
     public void setTransferSyntaxUid(String imageContentType) {
         engine.setTransferSyntaxUid(imageContentType);
     }
+
+    public void setIncludeInstances(boolean val) {
+        engine.setIncludeInstances(val);
+    }
+
+    public void setIncludeDeduplicated(boolean val) {
+        engine.setIncludeDeduplicated(val);
+    }
 }

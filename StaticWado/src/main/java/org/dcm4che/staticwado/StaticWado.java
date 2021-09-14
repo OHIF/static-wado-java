@@ -2,11 +2,15 @@ package org.dcm4che.staticwado;
 import org.apache.commons.cli.*;
 import org.dcm4che.s3.UploadS3;
 import org.dcm4che3.data.UID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
 
 public class StaticWado {
+    private static final Logger log = LoggerFactory.getLogger(StaticWado.class);
+
     public static final Map<String,String> TS_BY_TYPE = new HashMap<>();
     static {
         TS_BY_TYPE.put("jpll", UID.JPEGLosslessSV1);
@@ -41,10 +45,26 @@ public class StaticWado {
                 .desc("Dry run of upload (list files to upload, and then actually uploads studies.gz)")
                 .build());
         opts.addOption(Option.builder( "bucket")
+                .hasArg()
                 .desc("Bucket name to upload to")
                 .build());
+        opts.addOption(Option.builder( "dicomdir")
+                .hasArg()
+                .desc("DICOMDir output name (default dicomweb)")
+                .build());
         opts.addOption(Option.builder( "region")
+                .hasArg()
                 .desc("Bucket name to upload to")
+                .build());
+        opts.addOption(Option.builder( "deduplicated")
+                .desc("Generate deduplicated data set")
+                .build());
+        opts.addOption(Option.builder( "instances")
+                .desc("Generate instances query response")
+                .build());
+        opts.addOption(Option.builder("type")
+                .hasArg()
+                .desc("Sets the type name to use for dicomdir, contentType, output directory (lei,jls,jp2,jll)")
                 .build());
         opts.addOption(Option.builder("client")
                 .hasArg()
@@ -77,12 +97,16 @@ public class StaticWado {
         CommandLine cl = parseCommandLine(args);
         StudyManager manager = new StudyManager();
         String[] otherArgs = cl.getArgs();
+        String type = cl.getOptionValue("type");
         String[] studies = cl.getOptionValues("study");
-        String exportDir = cl.getOptionValue('d', "/dicomweb");
+        String exportDir = cl.getOptionValue('d', "/dicomweb"+(type!=null ? ("/"+type) : ""));
+        log.debug("Export dir {}", exportDir);
+        manager.setIncludeDeduplicated(cl.hasOption("deduplicated"));
+        manager.setIncludeInstances(cl.hasOption("instances"));
         if( otherArgs!=null && otherArgs.length>0 ) {
             manager.setExportDir(exportDir);
             String tsuid = cl.getOptionValue("tsuid");
-            String contentType = cl.getOptionValue("contentType","lei");
+            String contentType = cl.getOptionValue("contentType",type==null ? "lei" : type);
             if( contentType!=null && tsuid==null ) {
                 tsuid = TS_BY_TYPE.get(contentType);
             }
@@ -90,7 +114,7 @@ public class StaticWado {
             studies = manager.importStudies(otherArgs);
         }
         if( cl.hasOption("s3") ) {
-            UploadS3 uploadS3 = new UploadS3(cl);
+            UploadS3 uploadS3 = new UploadS3(cl,type);
             uploadS3.uploadClient();
             uploadS3.upload(exportDir,studies);
         }

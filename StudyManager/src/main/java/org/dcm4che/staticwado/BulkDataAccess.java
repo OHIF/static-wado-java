@@ -264,7 +264,7 @@ public class BulkDataAccess {
     public void saveSinglepart(String dest, Object value, String contentType) {
         String extension = EXTENSIONS.get(contentType);
         if (extension == null) {
-            log.warn("No singlepart for {}", contentType);
+            log.debug("No singlepart for {}", contentType);
             return;
         }
         extension = "."+extension;

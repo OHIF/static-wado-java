@@ -32,6 +32,7 @@ public class UploadS3 {
 
     private final String bucketName;
     private final String regionName;
+    private final String dicomdir;
     private boolean dryRun;
     /** The location of the OHIF Client to import into S3 */
     private final String clientImport;
@@ -40,8 +41,9 @@ public class UploadS3 {
     private FileHandler handler;
     private File studiesFile;
 
-    public UploadS3(CommandLine cl) {
+    public UploadS3(CommandLine cl, String type) {
         this.bucketName = cl.getOptionValue("bucket", "static-wado");
+        this.dicomdir = cl.getOptionValue("dicomdir", "dicomweb" + (type==null ? "" : ("/"+type)));
         this.regionName = cl.getOptionValue( "region", Regions.US_EAST_2.getName());
         this.dryRun = cl.hasOption("dry");
         this.clientImport = cl.getOptionValue("client");
@@ -66,7 +68,7 @@ public class UploadS3 {
                 log.debug("Looking at path {}", path);
                 path = path.replace('\\', '/');
                 if (path.contains("/studies")) {
-                    path = "dicomweb/" + path.substring(path.indexOf("/studies") + 1);
+                    path = dicomdir+"/" + path.substring(path.indexOf("/studies") + 1);
                     if (!path.endsWith("/")) path = path + "/";
                     File childFile = fileSrc;
                     while (!childFile.getName().equals("studies")) {
@@ -86,7 +88,7 @@ public class UploadS3 {
                 boolean wasDry = dryRun;
                 dryRun = false;
                 new JsonWadoAccess(new FileHandler(studiesFile.getParentFile())).writeJson("studies",studies.values().toArray(Attributes[]::new));
-                uploadS3("dicomweb/", studiesFile, true);
+                uploadS3(dicomdir+"/", studiesFile, true);
                 dryRun = wasDry;
             }
         } catch(IOException e) {
@@ -101,7 +103,7 @@ public class UploadS3 {
              if( path!=null ) {
                  path = path + file.getName() + "/";
              } else if( file.getName().equals("studies") ) {
-                 path = "dicomweb/studies/";
+                 path = dicomdir+"/studies/";
                  studiesFile = new File(file.getParentFile(),"studies.gz");
                  JsonWadoAccess.readStudiesDirectory(studies,studiesFile);
              }
@@ -123,20 +125,7 @@ public class UploadS3 {
         if( clientImport==null ) return;
         log.warn("Uploading client from {}", clientImport);
         File clientDir = new File(clientImport);
-        File indexFile = new File(clientDir,"index.html.gz");
-        // TODO - execute gzip -r <clientDir> if the index.html exists but .gz doesn't
-        // Make a copy of index.html.gz
-        try(FileInputStream fis = new FileInputStream(indexFile);
-            FileOutputStream fos = new FileOutputStream(new File(clientDir,"viewer.gz"))) {
-            byte[] data = new byte[16384];
-            int len = fis.read(data);
-            while(len!=-1) {
-                fos.write(data,0,len);
-                len = fis.read(data);
-            }
-        }
         uploadAll(null,clientDir);
-
     }
 
     /** Just does an upload of everything in the file location, to the sub-string of the given path */
