@@ -129,3 +129,176 @@ be extracted as pixeldata in a streaming format.
 * Support patient/study data updates
 * Support HL7 updates
 
+
+# Serverless Function Design
+This is still preliminary, but the basic idea is to have a few phases for the
+serverless design.  
+
+1. Convert single instances to instance level metadata and bulkdata
+2. Gather up new instance level metadata into grouped hash keyed data
+3. Gather the grouped data into study level references and write the DICOMweb query files
+
+## Gathering single instances
+This process is triggered by a DICOM instance being added/received. 
+It is possible to trigger this via a lambda function, or for this process
+to be done outside the cloud as the starting point.
+
+1. Extract large bulk data, storing to the hash directory structure
+2. Replace it with a reference by hash, with offset/length information
+   1. Alternate: replace with an offset reference to the DICOM file location
+   2. In the DICOM file reference, still include the hashed value
+3. Store the images to the frames and/or pixeldata.  
+   1. Include the image hash in the reference URL (TODO - how)
+   2. Optionally compress the image
+4. Write the remaining metadata file at the instance level
+
+Note how this is thread safe provided a single DICOM instance is only added once,
+as it only writes things relative to the instance.  Dealing with receiving
+the same instance a second time can be managed by checking for existance of
+the metadata file already, and writing a new copy.  That part itself isn't
+thread safe, but there isn't a workflow where it is likely to receive different
+versions of the same data at the same time.
+
+## Creation of hash/grouped files
+Triggered by creation of one of more instance level metadata files.  Should
+be delayed by some amount of time, and grouped by study UID to avoid executing
+too many instances of this.  This can also be done within the DICOM receive
+process, as the data is already available at that point.
+
+The hash/grouped data files are located in the hash directory structure and
+contain
+* Patient data, both as-received and as-updated (a single file won't have both)
+* Study data
+* Groups of SOP references, in a deduplicated format
+* Other bulkdata, just hashed as is
+
+This deduplication process splits off different types of data, and allows
+that to be written based a hash of the DICOM tag values.  The steps are:
+2. Extract Patient "query" results and Study data into their own instance within the JSON.
+3. Store the Study/Patient data into a file with a name based on the hash
+4. Group instances into referenced values either by series or at some study level grouping.
+   1. The series level grouping should be used when there is a lot of JSON data
+   2. There will typically be a lot of JSON data when there are lots of images in a series or for enhanced multiframe.
+   3. Group the remaining objects into a single group, store at the study level
+5. Write an index file referencing any index files used to create the new groups
+6. Schedule an update of the study metadata
+
+## deduplicated index generation
+The deduplicated index is a link to the group files and patient/study files
+which comprise the current state of the study.
+
+The thread safety of this design relies on only adding to the deduplicated
+and hashed files, and using references by hash to older versions of the files,
+and then a process that performs the gathering and checking, causing the process
+to be re-run whenever a change is detected, so that a change will eventually
+be consistent.
+
+The index directory name is index, and it contains JSON files in a DICOMweb
+like format.  Each file is named  <hash>.gz, and contains:
+1. A reference to the current study and patient hash files
+2. References to the series/grouped instance hash files
+3. References to the prior versions of the index
+4. References to deleted/moved data, plus the deletion reason
+
+The process to check/update the grouped data is thus:
+1. Read the top level deduplicated file, if present
+2. Check that the top level deduplicated file's referenced hash value includes every hash value in the index directory, other than it's own hash.
+3. If any index file is present but not referenced, then read all the other files in the index
+   1. If any one of the other files references all the files, then replace the top level deduplicated file
+   2. If there is new data in any of the sub-files, then create new hashed group files for them and add references
+   3. Add references to all the read indices to the new index file
+   4. Write a new index file with the name <hash>.gz for the hash code of the updated index
+4. For every series and at the study level, check the hash value in the query/metadata file
+   1. The hash value expected is the hash value of the group file that references that instance in the index file
+   2. This avoids re-writing query/metadata files when not needed
+   3. It is necessary to also check the current hash value of the study and patient data
+   4. Write a new file for any instance that is different
+5. If any update was performed, then schedule a unification check at time+1
+
+### Thread Safety for creation of index files
+Suppose multiple processes write index files, referencing a mixture of the
+same and updated data.  These files might contain:
+1. Exactly the same content, in which case the hash will be identical.  
+   1. At least one will succeed
+   2. Remaining ones can succeed or fail.
+2. References to shared data, plus new content.
+   1. The fact that references to shared data exist allows the shared data to be assumed by an updated process
+   2. A unification run of the update will occur in step #5 above
+      1. The unification run will merge two of more index files
+      2. The unification run MAY write new group files based on the new data
+      3. This run will then write a new index, referencing both original files
+
+### Thread Safety for creation of metadata and query files
+The unification run will compare the hash value of the group/study/patient
+files with that of the query/metadata file, and will update them when the
+index file has changed.  If any of these are out of date, another unification
+run is scheduled to ensure that the files are eventually in sync.
+
+### Thread Safety of fetch
+It is possible for retrieval of study data to be out of sync, by up to the
+cache time for these files, plus the unification run time.  Given that, the
+query and metadata files should have a relatively short cache time, while the
+bulkdata and deduplicated files can have a very long cache time.
+
+# QC Operations on Static Files
+It is possible for the static wado files to be updated with various quality
+control operations, such as patient updates, study verification, and 
+split/segment/delete operations.  These are performed as creation of new
+group files, plus updates to the index files.
+
+## Availability of linked data files
+If a soft link between files is available, then it should be used to 
+"copy" data files from one location to another.  Such a soft link could
+be implemented by a database table mapping hash key to location.  This table
+would have to be consulted for every instance lookup except in the case of
+looking items up already by hash key.  Doing this would prevent duplicate
+data definitions, and would make operations such as split/segment and
+study UID update very fast.
+
+One option for the linked data files is to:
+* Have the "cloudfront" version of the file reference the final file name location
+* Use a memory cache database for the mapping
+* When a file location mapping is absent, read the group file location to get the final file location
+* Add the mappings to the memory cache when they are read in initially
+
+## Patient Updates and Study Verification
+Excluding updating the study instance UID, patient and study updates are
+performed by writing new patient and study group files to the updated hash
+names, and then adding a new index file containing references to the new 
+patient or study group file.  If two index files have incompatible changes,
+then a conflict has occurred, and some sort of admin notification is required
+to resolve the conflict.  Otherwise, the latest version of the patient data
+can be created.
+
+## Study Instance UID updates and split/segment
+If the study instance UID has been updated or instances moved to a new study,
+then there are a couple of options. Currently, the only one being considered
+is to create an entirely new study directory, copying all the data from the
+original study, and creating a new index file referencing the updated study
+directory.  
+
+Future alternatives would allow a reference to the original study directory
+location, however, that may cause other types of problems.
+
+New incoming study updates in the unification data may be required to write
+the new data to the new study location.
+
+## Delete and Split/Segment operations
+For a delete operation, as well as the original locations for any
+split or segmented data items, the deleted item should be marked as deleted
+in the index file, along with a reason for the change.
+
+On subsequent updates to indices, the deleted files will be noted as being
+referenced, but other updates to them may be ignored.
+
+A delete for resend may be implemented by removing references AND removing
+instances in the cache, such that they are re-written on subsequent calls.
+Alternatively, the original values can be referenced, and the files moved
+out of the way, but still referenced.
+
+An instance already deleted, but received again should be rejected.
+
+## Split/Segment operations
+A split/segment can be done by writing new group files, referencing the
+old group files, and either copying data files or referencing the hash
+value of the old files.  This may require a database symlink.
