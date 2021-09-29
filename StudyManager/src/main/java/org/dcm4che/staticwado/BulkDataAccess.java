@@ -1,6 +1,7 @@
 package org.dcm4che.staticwado;
 
 import org.dcm4che3.data.*;
+import org.dcm4che3.image.PhotometricInterpretation;
 import org.dcm4che3.imageio.codec.ImageWriterFactory;
 import org.dcm4che3.imageio.plugins.dcm.DicomImageReader;
 import org.slf4j.Logger;
@@ -8,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.imageio.*;
 import javax.imageio.stream.FileImageInputStream;
+import java.awt.color.ColorSpace;
 import java.awt.image.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +22,8 @@ import java.util.regex.Pattern;
  */
 public class BulkDataAccess {
     private static final Logger log = LoggerFactory.getLogger(BulkDataAccess.class);
+
+    private static final ColorSpace sRGB = ColorSpace.getInstance(ColorSpace.CS_sRGB);
 
     FileHandler handler;
 
@@ -70,11 +74,15 @@ public class BulkDataAccess {
     }
 
     private ImageWriter compressor;
+
+    private ImageWriter jpegCompressor;
+
     private String tsuid = UID.ImplicitVRLittleEndian;
     private ImageWriteParam compressParam;
 
     public BulkDataAccess(FileHandler handler) {
         this.handler = handler;
+        jpegCompressor = ImageIO.getImageWritersByFormatName("jpeg").next();
     }
 
     public void setTransferSyntaxUid(String tsuid) {
@@ -178,6 +186,10 @@ public class BulkDataAccess {
             bulk.setURI(baseUri + "?offset="+(origOffset+imageLen*i-imageLen)+"&length="+imageLen);
             convertImageFormat(attr, frameName+i, i, bulk, false);
         }
+
+        int midFrame = (frames+1)/2;
+        convertThumbnail(attr, frameName.replace("frames/", "thumbnail"), midFrame);
+
         bulk.setURI(origUri);
     }
 
@@ -228,11 +240,14 @@ public class BulkDataAccess {
         String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/";
 
         boolean fragmented = fragments.size()!=frames+1;
-
-        for(int i=1; i<fragments.size(); i++) {
+        for(int i=1; i<=frames; i++) {
             BulkData bulk = (BulkData) fragments.get(i);
             convertImageFormat(attr, frameName+i, i, bulk, fragmented);
         }
+
+        int midFrame = (frames+1)/2;
+        convertThumbnail(attr, frameName.replace("frames/", "thumbnail"), midFrame);
+
     }
 
     static final byte[] DASH_BYTES = "--".getBytes(StandardCharsets.UTF_8);
@@ -260,17 +275,20 @@ public class BulkDataAccess {
         }
     }
 
-    /** Saves an object as singlepart to the /rendered directory.  */
+    /** Saves an object as singlepart to the thumbnail or rendered directory  */
     public void saveSinglepart(String dest, Object value, String contentType) {
         String extension = EXTENSIONS.get(contentType);
         if (extension == null) {
             log.debug("No singlepart for {}", contentType);
             return;
         }
-        extension = "."+extension;
-        log.warn("Writing single part {}{} content type {}", dest, extension, contentType);
+        log.warn("Writing single part {}.{} content type {}", dest, extension, contentType);
+        saveSinglepart(dest+"."+extension, value);
+    }
+
+    public void saveSinglepart(String dest, Object value) {
         handler.setGzip(false);
-        try(OutputStream os = handler.openForWrite(dest+extension)) {
+        try(OutputStream os = handler.openForWrite(dest)) {
             copyFrom(value,os);
         } catch(IOException e) {
             e.printStackTrace();
@@ -333,6 +351,24 @@ public class BulkDataAccess {
         bulk.setURI(finalUri);
     }
 
+    public ImageTypeSpecifier getSpecifier(Attributes ds) {
+        PhotometricInterpretation pmi = PhotometricInterpretation.fromString(
+                ds.getString(Tag.PhotometricInterpretation, "MONOCHROME2"));
+        int width = ds.getInt(Tag.Columns, 0);
+        int height = ds.getInt(Tag.Rows, 0);
+        int samples = ds.getInt(Tag.SamplesPerPixel, 1);
+        boolean banded = samples > 1 && ds.getInt(Tag.PlanarConfiguration, 0) != 0;
+        int bitsAllocated = ds.getInt(Tag.BitsAllocated, 8);
+        int bitsStored = ds.getInt(Tag.BitsStored, bitsAllocated);
+        int dataType = bitsAllocated <= 8 ? DataBuffer.TYPE_BYTE
+                : DataBuffer.TYPE_USHORT;
+
+        SampleModel sampleModel = pmi.createSampleModel(dataType, width, height, samples, banded);
+        ColorModel colourModel = pmi.createColorModel(bitsStored, dataType, sRGB, ds);
+        return new ImageTypeSpecifier(colourModel, sampleModel);
+    }
+
+
     /**
      * Converts the image format from the one it is in to the specified output format, adding the format to
      * the AvailableTransferSyntaxUID list.
@@ -348,9 +384,9 @@ public class BulkDataAccess {
         if( imageReader!=null && (tsuid!=null && !tsuid.equalsIgnoreCase(sourceTsuid) || fragmented) ) {
             log.warn("Converting image from {} to {}", sourceTsuid, tsuid);
             try {
-                WritableRaster r = (WritableRaster) imageReader.readRaster(frame-1, imageReader.getDefaultReadParam());
+                WritableRaster r = (WritableRaster) imageReader.readRaster(frame-1, null);
                 if( compressor!=null ) {
-                    ImageTypeSpecifier specifier = imageReader.getRawImageType(frame-1);
+                    ImageTypeSpecifier specifier = getSpecifier(attr);
                     BufferedImage bi = new BufferedImage(specifier.getColorModel(),r,false,null);
                     try(ExtMemoryCacheImageOutputStream ios = new ExtMemoryCacheImageOutputStream(attr)) {
                         compressor.setOutput(ios);
@@ -383,6 +419,31 @@ public class BulkDataAccess {
         saveMultipart(dest, writeData, writeType, SEPARATOR);
         saveSinglepart(dest, writeData, writeType);
         handler.setGzip(true);
+    }
+
+    /**
+     * Converts the image format into a thumbnail representation and writes it out.
+     */
+    public void convertThumbnail(Attributes attr, String dest, int frame) {
+        if( imageReader!=null ) {
+            log.warn("Converting image to thumbnail JPEG");
+            try {
+                ImageReadParam param = imageReader.getDefaultReadParam();
+                BufferedImage bi = imageReader.read(frame - 1, param);
+                try (ExtMemoryCacheImageOutputStream ios = new ExtMemoryCacheImageOutputStream(attr)) {
+                    jpegCompressor.setOutput(ios);
+                    jpegCompressor.write(null, new IIOImage(bi, null, null), null);
+                    byte[] writeData = ios.toByteArray();
+                    handler.setGzip(false);
+                    saveSinglepart(dest, writeData);
+                    handler.setGzip(true);
+                    attr.setString(Tag.AvailableTransferSyntaxUID, VR.UI, tsuid);
+                    log.warn("Wrote thumbnail to {} length {} type image/jpeg", tsuid, ((byte[]) writeData).length);
+                }
+            } catch (IOException e) {
+                log.warn("Unable to write to {}", dest);
+            }
+        }
     }
 
     public static byte[] toBytes(short[] data) {
