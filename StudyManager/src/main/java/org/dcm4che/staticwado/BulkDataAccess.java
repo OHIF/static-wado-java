@@ -423,6 +423,8 @@ public class BulkDataAccess {
         String writeType = CONTENT_TYPES.get(sourceTsuid);
         if( writeType==null ) {
             writeType = OCTET_STREAM;
+        } else {
+            writeType = writeType + ";transfer-syntax="+sourceTsuid;
         }
         String simpleTsuid = getSimpleTsuid(sourceTsuid);
         if( imageReader!=null && (tsuid!=null && recompress.contains(simpleTsuid) || fragmented) ) {
@@ -436,7 +438,7 @@ public class BulkDataAccess {
                         compressor.setOutput(ios);
                         compressor.write(null,new IIOImage(bi,null,null), compressParam);
                         writeData = ios.toByteArray();
-                        writeType = CONTENT_TYPES.get(tsuid);
+                        writeType = CONTENT_TYPES.get(tsuid) + ";transfer-syntax="+tsuid;
                         attr.setString(Tag.AvailableTransferSyntaxUID,VR.UI, tsuid);
                         handler.setGzip(false);
                         log.warn("Converted {} to {} length {} type {}", sourceTsuid, tsuid, ((byte[]) writeData).length, writeType);
