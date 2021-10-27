@@ -4,6 +4,7 @@ import org.dcm4che3.data.*;
 import org.dcm4che3.image.PhotometricInterpretation;
 import org.dcm4che3.imageio.codec.ImageWriterFactory;
 import org.dcm4che3.imageio.plugins.dcm.DicomImageReader;
+import org.dcm4che3.io.DicomOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +47,8 @@ public class BulkDataAccess {
         EXTENSIONS.put(VIDEO_H264,"mp4");
         EXTENSIONS.put(VIDEO_MPEG2, "mpeg");
     }
+
+    private String recompress = "lei,j2k";
 
     public static final String OCTET_STREAM = "application/octet-stream";
 
@@ -250,6 +253,34 @@ public class BulkDataAccess {
 
     }
 
+    /** Saves the raw, original DICOM object to the studies/.../SOP_Instance.gz file */
+    public void saveOriginal(Attributes attr) {
+        byte[] original = getBytes(attr);
+        if( original==null ) return;
+        String seriesInstanceUID = attr.getString(Tag.SeriesInstanceUID);
+        String sopInstanceUID = attr.getString(Tag.SOPInstanceUID);
+        String dest = "series/"+seriesInstanceUID+"/instances/"+sopInstanceUID;
+        saveMultipart(dest,original,"application/dicom", SEPARATOR);
+    }
+
+    public static byte[] getBytes(Attributes attr) {
+        if( attr==null ) return null;
+        try (
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                DicomOutputStream dos = new DicomOutputStream(baos, UID.ExplicitVRLittleEndian))
+        {
+            Attributes fmi = new Attributes();
+            fmi.setString(Tag.MediaStorageSOPClassUID,VR.UI,attr.getString(Tag.SOPClassUID));
+            fmi.setString(Tag.TransferSyntaxUID, VR.UI, UID.ExplicitVRLittleEndian);
+            fmi.setString(Tag.MediaStorageSOPInstanceUID, VR.UI, attr.getString(Tag.SOPInstanceUID));
+            dos.writeDataset(fmi,attr);
+            return baos.toByteArray();
+        } catch(IOException e) {
+            log.warn("Unable to write raw value");
+            return null;
+        }
+    }
+
     static final byte[] DASH_BYTES = "--".getBytes(StandardCharsets.UTF_8);
     static final byte[] NEWLINE_BYTES = "\r\n".getBytes(StandardCharsets.UTF_8);
     static final byte[] CONTENT_TYPE_BYTES = "Content-Type: ".getBytes(StandardCharsets.UTF_8);
@@ -368,6 +399,16 @@ public class BulkDataAccess {
         return new ImageTypeSpecifier(colourModel, sampleModel);
     }
 
+    public static String getSimpleTsuid(String sourceTsuid) {
+        if( sourceTsuid==null ) return "lei";
+        String contentType = CONTENT_TYPES.get(sourceTsuid);
+        if( contentType==null || OCTET_STREAM.equalsIgnoreCase(contentType) ) return "lei";
+        if( IMAGE_JPEG.equalsIgnoreCase(contentType) ) return "jpeg";
+        if( IMAGE_JPEG_LOSSLESS.equalsIgnoreCase(contentType) ) return "jll";
+        if( IMAGE_JPEG_LS.equalsIgnoreCase(contentType) ) return "jls";
+        if( IMAGE_JP2.equalsIgnoreCase(contentType) ) return "j2k";
+        return "lei";
+    }
 
     /**
      * Converts the image format from the one it is in to the specified output format, adding the format to
@@ -380,9 +421,12 @@ public class BulkDataAccess {
         Object writeData = bulk;
         String sourceTsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
         String writeType = CONTENT_TYPES.get(sourceTsuid);
-        if( writeType==null ) writeType = OCTET_STREAM;
-        if( imageReader!=null && (tsuid!=null && !tsuid.equalsIgnoreCase(sourceTsuid) || fragmented) ) {
-            log.warn("Converting image from {} to {}", sourceTsuid, tsuid);
+        if( writeType==null ) {
+            writeType = OCTET_STREAM;
+        }
+        String simpleTsuid = getSimpleTsuid(sourceTsuid);
+        if( imageReader!=null && (tsuid!=null && recompress.contains(simpleTsuid) || fragmented) ) {
+            log.warn("Converting image from {}({}) to {}", sourceTsuid, simpleTsuid, tsuid);
             try {
                 WritableRaster r = (WritableRaster) imageReader.readRaster(frame-1, null);
                 if( compressor!=null ) {
@@ -483,5 +527,13 @@ public class BulkDataAccess {
 
     public String getTransferSyntaxUid() {
         return tsuid;
+    }
+
+    public void setRecompress(String recompress) {
+        this.recompress = recompress==null ? "lei,j2k" : recompress;
+    }
+
+    public String getRecompress() {
+        return recompress;
     }
 }

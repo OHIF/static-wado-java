@@ -72,7 +72,11 @@ public class StaticWado {
                 .build());
         opts.addOption(Option.builder("contentType")
                 .hasArg()
-                .desc("Sets the transfer syntax appropriately for one of: jll,jls,jpeg,j2k")
+                .desc("Sets the transfer syntax appropriately for one of: jll,jls,jpeg,j2k,orig.  Will not recompress.  Default is jls.")
+                .build());
+        opts.addOption(Option.builder("recompress")
+                .hasArg()
+                .desc("Recompress already compressed files of the specified types (defaults to j2k, but can include jls, jll, jpeg)")
                 .build());
         opts.addOption(Option.builder("tsuid")
                 .hasArg()
@@ -106,11 +110,13 @@ public class StaticWado {
         if( otherArgs!=null && otherArgs.length>0 ) {
             manager.setExportDir(exportDir);
             String tsuid = cl.getOptionValue("tsuid");
-            String contentType = cl.getOptionValue("contentType",type==null ? "lei" : type);
+            String contentType = cl.getOptionValue("contentType",type==null ? "jls" : type);
             if( contentType!=null && tsuid==null ) {
                 tsuid = TS_BY_TYPE.get(contentType);
             }
+            String recompress = cl.getOptionValue("recompress",type!=null ? "lei,j2k,jls,jll,jxl" : "lei,j2k");
             manager.setTransferSyntaxUid(tsuid);
+            manager.setRecompress(recompress);
             studies = manager.importStudies(otherArgs);
         }
         if( cl.hasOption("s3") ) {

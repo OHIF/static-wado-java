@@ -15,6 +15,20 @@ import java.util.*;
 public class StudyMetadataEngine {
     private static final Logger log = LoggerFactory.getLogger(StudyMetadataEngine.class);
 
+    boolean includeInstances = false;
+    boolean includeDeduplicated = false;
+
+    StudyData studyData;
+    FileHandler handler;
+    private BulkDataAccess bulkDataAccess;
+    private String transferSyntaxUid;
+    private String recompress;
+
+    static final Set<String> saveOriginalSOPClasses = new HashSet<>();
+    static {
+        saveOriginalSOPClasses.add(UID.EnhancedSRStorage);
+    }
+
     public boolean isIncludeInstances() {
         return includeInstances;
     }
@@ -31,13 +45,6 @@ public class StudyMetadataEngine {
         this.includeDeduplicated = includeDeduplicated;
     }
 
-    boolean includeInstances = false;
-    boolean includeDeduplicated = false;
-
-    StudyData studyData;
-    FileHandler handler;
-    private BulkDataAccess bulkDataAccess;
-    private String transferSyntaxUid;
 
     public boolean isNewStudy(String testUID) {
         return studyData == null || !studyData.getStudyUid().equals(testUID);
@@ -87,13 +94,22 @@ public class StudyMetadataEngine {
         handler = new FileHandler(exportDir, studyData.getStudyUid());
         bulkDataAccess = new BulkDataAccess(handler);
         bulkDataAccess.setTransferSyntaxUid(transferSyntaxUid);
+        bulkDataAccess.setRecompress(recompress);
         handler.setGzip(true);
         return studyData.getStudyAttributes();
     }
 
-    public void addObject(File sourceFile, Attributes attr) {
+    public void addPart10Object(File sourceFile, Attributes attr) {
         studyData.addObject(attr);
         bulkDataAccess.moveBulkdata(sourceFile, attr);
+        if( isSaveOriginal(attr) ) {
+            bulkDataAccess.saveOriginal(attr);
+        }
+    }
+
+    public boolean isSaveOriginal(Attributes attr) {
+        String sopClass = attr.getString(Tag.SOPClassUID);
+        return saveOriginalSOPClasses.contains(sopClass);
     }
 
     /**
@@ -123,13 +139,21 @@ public class StudyMetadataEngine {
         Attributes dedupped = new Attributes(attr);
         for(DicomSelector selector : deduplicateSelectors) {
             Attributes testAttr = selector.select(dedupped);
-            String hashKey = DicomAccess.hashAttributes(testAttr);
+            String hashKey = hashAttributes(testAttr);
             testAttr.setString(DEDUPPED_CREATER, DEDUPPED_HASH, VR.ST, hashKey);
             selector.addTypeTo(testAttr);
             hashAttributes.putIfAbsent(hashKey,testAttr);
             dedupped.removeSelected(testAttr.tags());
-            DicomAccess.addToStrings(dedupped,DEDUPPED_CREATER, DEDUPPED_REF, hashKey);
+            addToStrings(dedupped,DEDUPPED_CREATER, DEDUPPED_REF, hashKey);
         }
-        hashAttributes.putIfAbsent(DicomAccess.hashAttributes(dedupped), dedupped);
+        hashAttributes.putIfAbsent(hashAttributes(dedupped), dedupped);
+    }
+
+    public void setRecompress(String recompress) {
+        this.recompress = recompress;
+    }
+
+    public String getRecompress() {
+        return recompress;
     }
 }

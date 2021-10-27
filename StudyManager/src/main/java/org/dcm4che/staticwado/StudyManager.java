@@ -92,7 +92,7 @@ public class StudyManager {
             lastLog = System.nanoTime();
             log.warn("Continuing study {} on sop {}", studyUID, attr.getString(Tag.SOPInstanceUID));
         }
-        engine.addObject(file, attr);
+        engine.addPart10Object(file, attr);
     }
 
     public void setExportDir(String name) {
@@ -114,5 +114,9 @@ public class StudyManager {
 
     public void setIncludeDeduplicated(boolean val) {
         engine.setIncludeDeduplicated(val);
+    }
+
+    public void setRecompress(String recompress) {
+        engine.setRecompress(recompress);
     }
 }
