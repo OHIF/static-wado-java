@@ -5,12 +5,10 @@ import org.dcm4che3.data.Attributes;
 import java.io.*;
 import java.util.*;
 import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.VR;
 import org.dcm4che3.json.JSONReader;
-import org.dcm4che3.json.JSONWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,18 +17,13 @@ import javax.json.JsonValue;
 import javax.json.stream.JsonGenerator;
 import javax.json.stream.JsonParser;
 
-public class JsonWadoAccess {
-    private static final Logger log = LoggerFactory.getLogger(JsonWadoAccess.class);
-    private final FileHandler handler;
+public class JsonAccess {
+    private static final Logger log = LoggerFactory.getLogger(JsonAccess.class);
 
-    private boolean encodeAsNumber = true;
-    private boolean pretty = false;
+    private static boolean encodeAsNumber = true;
+    private static boolean pretty = false;
 
-    public JsonWadoAccess(FileHandler handler) {
-        this.handler = handler;
-    }
-
-    public JsonGenerator createGenerator(OutputStream out) {
+    public static JsonGenerator createGenerator(OutputStream out) {
         Map<String, ?> conf = new HashMap<String, Object>(2);
         if( pretty ) {
             conf.put(JsonGenerator.PRETTY_PRINTING, null);
@@ -38,8 +31,8 @@ public class JsonWadoAccess {
         return Json.createGeneratorFactory(conf).createGenerator(out);
     }
 
-    public JSONWriter createWriter(JsonGenerator generator) {
-        JSONWriter jsonWriter = new JSONWriter(generator);
+    public static org.dcm4che3.json.JSONWriter createWriter(JsonGenerator generator) {
+        org.dcm4che3.json.JSONWriter jsonWriter = new org.dcm4che3.json.JSONWriter(generator);
         if (encodeAsNumber) {
             jsonWriter.setJsonType(VR.DS, JsonValue.ValueType.NUMBER);
             jsonWriter.setJsonType(VR.IS, JsonValue.ValueType.NUMBER);
@@ -54,11 +47,11 @@ public class JsonWadoAccess {
      * @param dest is a file name to write to
      * @param attributes is an array of objects to write to the given location
      */
-    public void writeJson(String dest, Attributes... attributes) {
-        try(OutputStream fos = handler.openForWrite(dest); JsonGenerator generator = createGenerator(fos)) {
+    public static void write(FileHandler handler, String dir, String dest, Attributes... attributes) {
+        try(OutputStream fos = handler.openForWrite(dir,dest,true); JsonGenerator generator = createGenerator(fos)) {
             generator.writeStartArray();
             for(Attributes attr : attributes) {
-                JSONWriter writer = createWriter(generator);
+                org.dcm4che3.json.JSONWriter writer = createWriter(generator);
                 writer.write(attr);
                 generator.flush();
                 fos.write('\n');
@@ -67,36 +60,37 @@ public class JsonWadoAccess {
         } catch(IOException e) {
             log.warn("Unable to write file {}", dest, e);
         }
-        log.debug("Wrote to {} / {}", handler.getStudyDir(), dest);
+        log.debug("Wrote to {} / {}", dir, dest);
     }
 
-    public static List<Attributes> read(File location) throws IOException {
+    public static List<Attributes> read(FileHandler handler, String dir, String name) throws IOException {
         List<Attributes> ret = new ArrayList<>();
-        try(InputStream is = new FileInputStream(location); GZIPInputStream gzip = new GZIPInputStream(is)) {
+        try(InputStream is = handler.read(dir,name); GZIPInputStream gzip = new GZIPInputStream(is)) {
             JsonParser parser = Json.createParser(gzip);
             new JSONReader(parser).readDatasets((fmi,attr) -> {
                 ret.add(attr);
             });
+            return ret;
         } catch(FileNotFoundException e) {
             log.warn("Studies list not found, starting fresh");
             return Collections.emptyList();
+        } catch(IOException e) {
+            log.warn("Unable to read file", e);
         }
         return ret;
     }
-
-    public static void readStudiesDirectory(Map<String,Attributes> studies, File file) {
-        try {
-            List<Attributes> studiesArr = JsonWadoAccess.read(file);
-            for (Attributes attr : studiesArr) {
-                String studyUID = attr.getString(Tag.StudyInstanceUID);
-                studies.put(studyUID, attr);
-            }
-        } catch(IOException e) {
-            log.warn("No studies directory read for {}", file);
-        }
-    }
-
-
+//
+//    public static void readStudiesDirectory(Map<String,Attributes> studies, File file) {
+//        try {
+//            List<Attributes> studiesArr = JsonAccess.read(file);
+//            for (Attributes attr : studiesArr) {
+//                String studyUID = attr.getString(Tag.StudyInstanceUID);
+//                studies.put(studyUID, attr);
+//            }
+//        } catch(IOException e) {
+//            log.warn("No studies directory read for {}", file);
+//        }
+//    }
 
     public void setPretty(boolean b) {
         pretty = b;

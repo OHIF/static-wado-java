@@ -4,54 +4,29 @@ import java.io.*;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 /** The file handler knows about how to write to a given DICOMweb location tree.
  * It is designed to allow other output mechanisms to be used in place of the straight file operations
  */
 public class FileHandler {
+    StudyManager callbacks;
 
-    private final File exportDir;
-    private final File studyDir;
-    private boolean gzip = true;
-
-    public FileHandler(File exportDir, String studyUID) {
-        this.exportDir = exportDir;
-        this.studyDir = new File(exportDir,studyUID);
-    }
-    
-    public FileHandler(File exportDir) {
-        this.exportDir = exportDir;
-        this.studyDir = exportDir;
-    }
-
-    public void mkdirs(String dest) {
-        if( dest.contains("/") ) {
-            File destDir = new File(studyDir,dest).getParentFile();
-            destDir.mkdirs();
-        } else {
-            studyDir.mkdirs();
-        }
+    public FileHandler(StudyManager callbacks) {
+        this.callbacks = callbacks;
     }
 
     /** Opens the given destination file for writing, as either gzip or non-gzip, AND deletes any older version of the wrong type (gzip or non-gzip). */
-    public OutputStream openForWrite(String dest) throws IOException {
-        mkdirs(dest);
+    public OutputStream openForWrite(String dir, String name, boolean gzip) throws IOException {
+        new File(dir,name).getParentFile().mkdirs();
         if( gzip ) {
-            new File(studyDir,dest).delete();
-            return new GZIPOutputStream(new FileOutputStream(new File(studyDir,dest+".gz")));
+            new File(dir,name).delete();
+            return new GZIPOutputStream(new FileOutputStream(new File(dir,name+".gz")));
         } else {
-            new File(studyDir,dest+".gz").delete();
-            return new FileOutputStream(new File(studyDir,dest));
+            new File(dir,name+".gz").delete();
+            return new FileOutputStream(new File(dir,name));
         }
-    }
-
-    public void setGzip(boolean b) {
-        gzip = b;
-    }
-
-    public File getStudyDir() {
-        return studyDir;
     }
 
     /** Generates a hash of a given path, generation levels sub-directories for it */
@@ -76,5 +51,23 @@ public class FileHandler {
             e.printStackTrace();
             return file.getName();
         }
+    }
+
+    /**
+     * Opens a file stream to write to the study directory.
+     *
+     * @param id
+     * @param dest
+     * @param gzip
+     * @return
+     */
+    public OutputStream writeStudyDir(SopId id, String dest, boolean gzip) throws IOException {
+        return openForWrite(callbacks.getStudiesDir(id), dest, gzip);
+    }
+
+    public InputStream read(String dir, String name) throws IOException {
+        FileInputStream fis = new FileInputStream(new File(dir,name));
+        if( name.endsWith(".gz") ) return new GZIPInputStream(fis);
+        return fis;
     }
 }

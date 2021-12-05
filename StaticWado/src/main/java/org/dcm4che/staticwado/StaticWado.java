@@ -1,6 +1,5 @@
 package org.dcm4che.staticwado;
 import org.apache.commons.cli.*;
-import org.dcm4che.s3.UploadS3;
 import org.dcm4che3.data.UID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,28 +100,6 @@ public class StaticWado {
         CommandLine cl = parseCommandLine(args);
         StudyManager manager = new StudyManager();
         String[] otherArgs = cl.getArgs();
-        String type = cl.getOptionValue("type");
-        String[] studies = cl.getOptionValues("study");
-        String exportDir = cl.getOptionValue('d', "/dicomweb"+(type!=null ? ("/"+type) : ""));
-        log.debug("Export dir {}", exportDir);
-        manager.setIncludeDeduplicated(cl.hasOption("deduplicated"));
-        manager.setIncludeInstances(cl.hasOption("instances"));
-        if( otherArgs!=null && otherArgs.length>0 ) {
-            manager.setExportDir(exportDir);
-            String tsuid = cl.getOptionValue("tsuid");
-            String contentType = cl.getOptionValue("contentType",type==null ? "jls" : type);
-            if( contentType!=null && tsuid==null ) {
-                tsuid = TS_BY_TYPE.get(contentType);
-            }
-            String recompress = cl.getOptionValue("recompress",type!=null ? "lei,j2k,jls,jll,jxl" : "lei,j2k");
-            manager.setTransferSyntaxUid(tsuid);
-            manager.setRecompress(recompress);
-            studies = manager.importStudies(otherArgs);
-        }
-        if( cl.hasOption("s3") ) {
-            UploadS3 uploadS3 = new UploadS3(cl,type);
-            uploadS3.uploadClient();
-            uploadS3.upload(exportDir,studies);
-        }
+        manager.scanDicom(otherArgs);
     }
 }

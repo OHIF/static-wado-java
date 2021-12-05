@@ -12,7 +12,7 @@ import java.util.Map;
 import static org.dcm4che.staticwado.DicomAccess.*;
 
 /** Selects various dicom sub-sets */
-public interface DicomSelector {
+public interface TagLists {
     Attributes select(Attributes src);
 
     default String getName() {
@@ -22,18 +22,18 @@ public interface DicomSelector {
     default void addTypeTo(Attributes attr) {
         String name = getName();
         if( name!=null ) {
-            attr.setString(DEDUPPED_CREATER, DicomAccess.DEDUPPED_NAME, VR.ST, name);
+            attr.setString(DEDUPPED_CREATER, DicomAccess.DEDUPPED_TYPE, VR.ST, name);
         }
     }
 
-    class SpecifiedDicomSelector implements DicomSelector {
+    class SpecifiedTagLists implements TagLists {
         private int[] selection;
         private String name;
         private Map<Integer,String> creators;
 
-        public SpecifiedDicomSelector() {}
+        public SpecifiedTagLists() {}
 
-        public SpecifiedDicomSelector(String name) {
+        public SpecifiedTagLists(String name) {
             this.name = name;
         }
 
@@ -42,7 +42,7 @@ public interface DicomSelector {
             return name;
         }
 
-        public SpecifiedDicomSelector creator(String name, int tag) {
+        public SpecifiedTagLists creator(String name, int tag) {
             if( creators==null ) creators = new HashMap<>();
             creators.put(tag,name);
             return this;
@@ -54,7 +54,7 @@ public interface DicomSelector {
             return ret;
         }
 
-        public SpecifiedDicomSelector add(int... tags) {
+        public SpecifiedTagLists add(int... tags) {
             if( selection==null ) {
                 selection = tags;
             } else {
@@ -91,7 +91,7 @@ public interface DicomSelector {
             Tag.InstanceCreationDate, Tag.ContentDate, Tag.ContentTime,
     };
 
-    int[] RENDER_TAGS = new int[]{Tag.Rows, Tag.Columns, Tag.BitsStored, Tag.LossyImageCompression, Tag.BitsStored,
+    int[] IMAGE_TAGS = new int[]{Tag.Rows, Tag.Columns, Tag.BitsStored, Tag.LossyImageCompression, Tag.BitsStored,
             Tag.BitsAllocated, Tag.AvailableTransferSyntaxUID, Tag.PhotometricInterpretation, Tag.PlanarConfiguration,
             Tag.ModalityLUTSequence, Tag.VOILUTSequence, Tag.VOILUTFunction, Tag.VOIType, Tag.WindowCenter, Tag.WindowWidth,
             Tag.WindowCenterWidthExplanation, Tag.RescaleIntercept, Tag.RescaleSlope,Tag.RescaleType, Tag.ImageType,
@@ -101,11 +101,11 @@ public interface DicomSelector {
         Tag.Manufacturer, Tag.InstitutionalDepartmentName, Tag.InstitutionName,
     };
 
-    DicomSelector PATIENT_STUDY = new SpecifiedDicomSelector("PatientStudy").add(PATIENT_TAGS).add(STUDY_TAGS);
-    DicomSelector SERIES = new SpecifiedDicomSelector("series").add(SERIES_TAGS);
-    DicomSelector INSTANCE = new SpecifiedDicomSelector("instance").add(DicomSelector.INSTANCE_TAGS);
-    DicomSelector PATIENT = new SpecifiedDicomSelector("patient").add(PATIENT_TAGS);
-    DicomSelector STUDY = new SpecifiedDicomSelector("study").add(STUDY_TAGS);
-    DicomSelector RENDER = new SpecifiedDicomSelector("render").add(RENDER_TAGS);
-    DicomSelector REFERENCE = new SpecifiedDicomSelector().add(RENDER_TAGS).creator(DEDUPPED_CREATER, DEDUPPED_CREATOR_TAG);
+    TagLists PATIENT_STUDY = new SpecifiedTagLists("PatientStudy").add(PATIENT_TAGS).add(STUDY_TAGS);
+    TagLists SERIES = new SpecifiedTagLists("series").add(SERIES_TAGS);
+    TagLists INSTANCE_QUERY = new SpecifiedTagLists("instance").add(TagLists.INSTANCE_TAGS);
+    TagLists PATIENT = new SpecifiedTagLists("patient").add(PATIENT_TAGS);
+    TagLists STUDY = new SpecifiedTagLists("study").add(STUDY_TAGS);
+    TagLists IMAGE = new SpecifiedTagLists("image").add(IMAGE_TAGS);
+    TagLists REFERENCE = new SpecifiedTagLists().add(IMAGE_TAGS).creator(DEDUPPED_CREATER, DEDUPPED_CREATOR_TAG);
 }
