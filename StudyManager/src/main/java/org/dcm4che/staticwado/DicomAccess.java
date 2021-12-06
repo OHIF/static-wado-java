@@ -91,12 +91,13 @@ public class DicomAccess {
         }
     }
 
-    public static void addToStrings(Attributes attr, String creator, int tag, String value) {
+    public static void addToStrings(Attributes attr, String creator, int tag, VR vr, String value) {
         String[] values = attr.getStrings(creator,tag);
         if( values==null || values.length==0 ) {
-            attr.setString(creator,tag,VR.ST, value);
+            attr.setString(creator,tag,vr, value);
             return;
         }
+        if( Arrays.stream(values).anyMatch(itemValue -> itemValue.equals(value))) return;
         String[] newValues = Arrays.copyOf(values,values.length+1);
         newValues[newValues.length-1] = value;
         attr.setString(creator,tag,VR.ST,newValues);

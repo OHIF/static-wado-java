@@ -42,9 +42,25 @@ public class StudyData {
 
     public String addExtract(Attributes extract) {
         var hashValue = getHash(extract);
-        if( extractData.containsKey(hashValue) ) return null;
-        extractData.put(hashValue,extract);
-        return hashValue;
+        if( extractData.putIfAbsent(hashValue,extract)==null ) {
+            readHashes.put(hashValue,callbacks.getBulkdataName(hashValue,".json.gz"));
+            return hashValue;
+        }
+        return null;
+    }
+
+    public String addDeduplicated(Attributes instance) {
+        var hashValue = getHash(instance);
+        var current = deduplicated.putIfAbsent(hashValue, instance);
+        if( current==null ) {
+            readHashes.put(hashValue, callbacks.getDeduplicatedName(hashValue));
+            callbacks.studyStats.add("AddDeduplicated", 50, "Add deduplicated instance to {}",
+                studyUid);
+            return hashValue;
+        }
+        callbacks.studyStats.add("SkipDeduplicated", 500, "Skip deduplicated add instance {} to {}",
+            hashValue, studyUid);
+        return null;
     }
 
     /**
@@ -66,6 +82,9 @@ public class StudyData {
         info.setString(DicomAccess.DEDUPPED_CREATER, DicomAccess.DEDUPPED_TYPE, VR.CS, DicomAccess.INFO_TYPE);
         info.setString(DicomAccess.DEDUPPED_CREATER, DicomAccess.DEDUPPED_HASH, VR.CS, hashValue);
         writeList.add(0,info);
+        if( isStudyData ) {
+            extractData.values().forEach(item -> writeList.add(item));
+        }
         JsonAccess.write(callbacks.fileHandler,dir,name,writeList.toArray(Attributes[]::new));
         callbacks.studyStats.add("GroupDeduplicated", 1,
             "Combine single instance deduplicated objects into sets: {} instances",
@@ -92,8 +111,11 @@ public class StudyData {
     /**
      * Generate study/series/instance query objects and series level metadata files.
      */
-    public boolean writeStudyMetadata() {
-        if( deduplicated.size()==0 ) return false;
+    public Attributes writeStudyMetadata() {
+        if( deduplicated.size()==0 ) {
+            log.warn("No deduplicated instances, not writing study {}",studyUid);
+            return null;
+        }
         //  TODO - check to see if the content is identical
         var seriesContents = new HashMap<String,SeriesRecord>();
         var studyQuery = new AtomicReference<Attributes>();
@@ -107,6 +129,13 @@ public class StudyData {
                 (uid) -> new SeriesRecord(uid,metadata));
             r.add(metadata);
         });
+        Attributes studyQ = studyQuery.get();
+        studyQ.setInt(Tag.NumberOfStudyRelatedSeries,VR.IS, seriesContents.size());
+        seriesContents.forEach( (uid,r) -> {
+            DicomAccess.addToStrings(studyQ,null,Tag.ModalitiesInStudy,VR.CS,r.seriesQuery.getString(Tag.Modality));
+            r.seriesQuery.setInt(Tag.NumberOfSeriesRelatedInstances,VR.IS,r.metadata.size());
+            studyQ.setInt(Tag.NumberOfStudyRelatedInstances,VR.IS,r.metadata.size()+studyQ.getInt(Tag.NumberOfStudyRelatedInstances,0));
+        });
         JsonAccess.write(callbacks.fileHandler, studyDir, "studies", studyQuery.get());
         var seriesQuery = seriesContents.values().stream().map((r) -> r.seriesQuery).toArray(Attributes[]::new);
         JsonAccess.write(callbacks.fileHandler, studyDir, "series", seriesQuery);
@@ -118,7 +147,7 @@ public class StudyData {
         });
         writeDeduplicatedGroup(studyDir,
             (hash) -> "deduplicated", true);
-        return true;
+        return studyQ;
     }
 
 
@@ -129,15 +158,17 @@ public class StudyData {
      */
     public Attributes toMetadata(Attributes deduplicated) {
         var refs = deduplicated.getStrings(DicomAccess.DEDUPPED_CREATER,DicomAccess.DEDUPPED_REF, VR.CS);
-        Attributes ret = new Attributes(deduplicated);
+        Attributes ret = new Attributes();
+        ret.addAll(deduplicated);
         if( refs!=null ) {
             for(var ref : refs) {
                 Attributes extractItem = getOrLoadExtract(ref);
                 if( extractItem==null ) {
-                    log.warn("Unable to load extract item", ref);
+                    log.warn("Unable to load extract item {}", ref);
                     continue;
                 }
-                ret.addAll(extractItem);
+                log.debug("Adding extract {}", extractItem.getString(DicomAccess.DEDUPPED_CREATER, DicomAccess.DEDUPPED_TYPE));
+                ret.addAll(toMetadata(extractItem));
             }
         }
         return ret;

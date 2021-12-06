@@ -374,7 +374,7 @@ public class ExtractImageFrames {
         Object writeData = bulk;
         String sourceTsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
         String writeType = CONTENT_TYPES.get(sourceTsuid);
-        boolean gzip = true;
+        boolean gzip = false;
         if( writeType==null ) {
             writeType = OCTET_STREAM;
         } else {
@@ -393,7 +393,6 @@ public class ExtractImageFrames {
                         compressor.write(null,new IIOImage(bi,null,null), compressParam);
                         writeData = ios.toByteArray();
                         writeType = CONTENT_TYPES.get(tsuid) + ";transfer-syntax="+tsuid;
-                        gzip = false;
                         attr.setString(Tag.AvailableTransferSyntaxUID,VR.UI, tsuid);
                         log.warn("Converted {} to {} length {} type {}", sourceTsuid, tsuid, ((byte[]) writeData).length, writeType);
                     }
@@ -402,6 +401,7 @@ public class ExtractImageFrames {
                     DataBuffer buf = r.getDataBuffer();
                     writeData = toBytes(buf);
                     writeType = OCTET_STREAM;
+                    gzip = true;
                     if( writeData==null ) {
                         log.error("Unable to convert data buffer from {} to bytes", buf.getClass());
                         writeData = bulk;
@@ -413,10 +413,11 @@ public class ExtractImageFrames {
                 e.printStackTrace();
             }
         } else {
-            log.warn("Leaving {} as original type {} imageReader {} tsuid {}", sourceTsuid, writeType, reader, tsuid);
+            callbacks.studyStats.add("Orig TS Image", 50, "Leaving {} as original type {} imageReader {} tsuid {}", sourceTsuid, writeType, reader, tsuid);
+            gzip = UID.ImplicitVRLittleEndian.equals(tsuid) || UID.ExplicitVRLittleEndian.equals(tsuid);
         }
         log.debug("Original bulkdata source is {}", bulk.getURI());
-        saveMultipart(dir,dest, writeData, writeType, SEPARATOR,gzip);
+        saveMultipart(dir,dest, writeData, writeType, SEPARATOR, gzip);
         saveSinglepart(dir, dest, writeData, writeType);
     }
 
@@ -425,7 +426,6 @@ public class ExtractImageFrames {
      */
     public void convertThumbnail(DicomImageReader reader, String dir, Attributes attr, String dest, int frame) {
         if( reader!=null ) {
-            log.warn("Converting image to thumbnail JPEG");
             try {
                 ImageReadParam param = reader.getDefaultReadParam();
                 BufferedImage bi = reader.read(frame - 1, param);
@@ -435,7 +435,7 @@ public class ExtractImageFrames {
                     byte[] writeData = ios.toByteArray();
                     saveSinglepart(dir,dest, writeData);
                     attr.setString(Tag.AvailableTransferSyntaxUID, VR.UI, tsuid);
-                    callbacks.studyStats.add("Thumbnail", 1,
+                    callbacks.studyStats.add("Thumbnail", 25,
                         "Wrote thumbnail to {} as JPEG length {} type image/jpeg",dest, ((byte[]) writeData).length);
                 }
             } catch (IOException e) {

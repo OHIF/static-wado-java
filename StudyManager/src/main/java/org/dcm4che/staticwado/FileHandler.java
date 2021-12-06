@@ -19,9 +19,14 @@ public class FileHandler {
 
     /** Opens the given destination file for writing, as either gzip or non-gzip, AND deletes any older version of the wrong type (gzip or non-gzip). */
     public OutputStream openForWrite(String dir, String name, boolean gzip) throws IOException {
-        new File(dir,name).getParentFile().mkdirs();
+        if( name.endsWith(".gz") ) {
+            name = name.substring(0,name.length()-3);
+            gzip = true;
+        }
+        File fullName = new File(dir,name).getCanonicalFile();
+        fullName.getParentFile().mkdirs();
         if( gzip ) {
-            new File(dir,name).delete();
+            fullName.delete();
             return new GZIPOutputStream(new FileOutputStream(new File(dir,name+".gz")));
         } else {
             new File(dir,name+".gz").delete();

@@ -44,17 +44,24 @@ public class InstanceDeduplicate implements BiConsumer<SopId,Attributes> {
      */
     public void accept(SopId id,Attributes srcAttr) {
         StudyData studyData = id.getStudyData();
+        if( callbacks.isInstanceMetadata() ) {
+            JsonAccess.write(callbacks.fileHandler, callbacks.getStudiesDir(id),
+                "series/"+id.getSeriesInstanceUid() + "/instances/"+id.getSopInstanceUid(),
+                srcAttr);
+        }
         Attributes dedupped = new Attributes(srcAttr);
         for(TagLists selector : deduplicateSelectors) {
             Attributes testAttr = selector.select(srcAttr);
+            selector.remove(dedupped);
             String hashKey = hashAttributes(testAttr);
             testAttr.setString(DEDUPPED_CREATER, DEDUPPED_HASH, VR.ST, hashKey);
             selector.addTypeTo(testAttr);
             callbacks.extractConsumer.accept(id,testAttr);
-            dedupped.removeSelected(testAttr.tags());
-            addToStrings(dedupped,DEDUPPED_CREATER, DEDUPPED_REF, hashKey);
+            addToStrings(dedupped,DEDUPPED_CREATER, DEDUPPED_REF, VR.ST, hashKey);
         }
         dedupped.setString(DEDUPPED_CREATER,DEDUPPED_TYPE,VR.CS, INSTANCE_TYPE);
+        dedupped.setString(Tag.SeriesInstanceUID,VR.UI, id.getSeriesInstanceUid());
+        dedupped.setString(Tag.SOPInstanceUID,VR.UI,id.getSopInstanceUid());
         callbacks.deduplicatedConsumer.accept(id,dedupped);
     }
 

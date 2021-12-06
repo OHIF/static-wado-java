@@ -14,6 +14,7 @@ import static org.dcm4che.staticwado.DicomAccess.*;
 /** Selects various dicom sub-sets */
 public interface TagLists {
     Attributes select(Attributes src);
+    void remove(Attributes src);
 
     default String getName() {
         return null;
@@ -52,6 +53,10 @@ public interface TagLists {
             Attributes ret = new Attributes();
             ret.addSelected(src,selection);
             return ret;
+        }
+
+        public void remove(Attributes src) {
+            src.removeSelected(selection);
         }
 
         public SpecifiedTagLists add(int... tags) {

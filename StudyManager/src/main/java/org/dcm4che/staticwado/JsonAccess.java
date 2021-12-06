@@ -18,81 +18,79 @@ import javax.json.stream.JsonGenerator;
 import javax.json.stream.JsonParser;
 
 public class JsonAccess {
-    private static final Logger log = LoggerFactory.getLogger(JsonAccess.class);
+  private static final Logger log = LoggerFactory.getLogger(JsonAccess.class);
 
-    private static boolean encodeAsNumber = true;
-    private static boolean pretty = false;
+  private static boolean encodeAsNumber = true;
+  private static boolean pretty = false;
 
-    public static JsonGenerator createGenerator(OutputStream out) {
-        Map<String, ?> conf = new HashMap<String, Object>(2);
-        if( pretty ) {
-            conf.put(JsonGenerator.PRETTY_PRINTING, null);
-        }
-        return Json.createGeneratorFactory(conf).createGenerator(out);
+  public static JsonGenerator createGenerator(OutputStream out) {
+    Map<String, ?> conf = new HashMap<String, Object>(2);
+    if (pretty) {
+      conf.put(JsonGenerator.PRETTY_PRINTING, null);
     }
+    return Json.createGeneratorFactory(conf).createGenerator(out);
+  }
 
-    public static org.dcm4che3.json.JSONWriter createWriter(JsonGenerator generator) {
-        org.dcm4che3.json.JSONWriter jsonWriter = new org.dcm4che3.json.JSONWriter(generator);
-        if (encodeAsNumber) {
-            jsonWriter.setJsonType(VR.DS, JsonValue.ValueType.NUMBER);
-            jsonWriter.setJsonType(VR.IS, JsonValue.ValueType.NUMBER);
-            jsonWriter.setJsonType(VR.SV, JsonValue.ValueType.NUMBER);
-            jsonWriter.setJsonType(VR.UV, JsonValue.ValueType.NUMBER);
-        }
-        return jsonWriter;
+  public static org.dcm4che3.json.JSONWriter createWriter(JsonGenerator generator) {
+    org.dcm4che3.json.JSONWriter jsonWriter = new org.dcm4che3.json.JSONWriter(generator);
+    if (encodeAsNumber) {
+      jsonWriter.setJsonType(VR.DS, JsonValue.ValueType.NUMBER);
+      jsonWriter.setJsonType(VR.IS, JsonValue.ValueType.NUMBER);
+      jsonWriter.setJsonType(VR.SV, JsonValue.ValueType.NUMBER);
+      jsonWriter.setJsonType(VR.UV, JsonValue.ValueType.NUMBER);
     }
+    return jsonWriter;
+  }
 
-    /**
-     * Writes JSON representation of the given attributes to the destination file.
-     * @param dest is a file name to write to
-     * @param attributes is an array of objects to write to the given location
-     */
-    public static void write(FileHandler handler, String dir, String dest, Attributes... attributes) {
-        try(OutputStream fos = handler.openForWrite(dir,dest,true); JsonGenerator generator = createGenerator(fos)) {
-            generator.writeStartArray();
-            for(Attributes attr : attributes) {
-                org.dcm4che3.json.JSONWriter writer = createWriter(generator);
-                writer.write(attr);
-                generator.flush();
-                fos.write('\n');
-            }
-            generator.writeEnd();
-        } catch(IOException e) {
-            log.warn("Unable to write file {}", dest, e);
-        }
-        log.debug("Wrote to {} / {}", dir, dest);
+  /**
+   * Writes JSON representation of the given attributes to the destination file.
+   *
+   * @param dest       is a file name to write to
+   * @param attributes is an array of objects to write to the given location
+   */
+  public static void write(FileHandler handler, String dir, String dest, Attributes... attributes) {
+    log.debug("Writing {} instances to {}", attributes.length, dest);
+    try (OutputStream fos = handler.openForWrite(dir, dest, true); JsonGenerator generator = createGenerator(fos)) {
+      generator.writeStartArray();
+      for (Attributes attr : attributes) {
+        org.dcm4che3.json.JSONWriter writer = createWriter(generator);
+        writer.write(attr);
+        log.debug("Wrote {} tags", attr.size());
+        generator.flush();
+        fos.write('\n');
+      }
+      generator.writeEnd();
+    } catch (IOException e) {
+      log.warn("Unable to write file {}", dest, e);
     }
+    log.debug("Wrote to {} / {}", dir, dest);
+  }
 
-    public static List<Attributes> read(FileHandler handler, String dir, String name) throws IOException {
-        List<Attributes> ret = new ArrayList<>();
-        try(InputStream is = handler.read(dir,name); GZIPInputStream gzip = new GZIPInputStream(is)) {
-            JsonParser parser = Json.createParser(gzip);
-            new JSONReader(parser).readDatasets((fmi,attr) -> {
-                ret.add(attr);
-            });
-            return ret;
-        } catch(FileNotFoundException e) {
-            log.warn("Studies list not found, starting fresh");
-            return Collections.emptyList();
-        } catch(IOException e) {
-            log.warn("Unable to read file", e);
-        }
-        return ret;
+  public static void writeSingle(FileHandler handler, String dir, String dest, Attributes data) {
+    try (OutputStream fos = handler.openForWrite(dir, dest, true); JsonGenerator generator = createGenerator(fos)) {
+      org.dcm4che3.json.JSONWriter writer = createWriter(generator);
+      writer.write(data);
+      log.debug("Wrote {} tags", data.size());
+      generator.flush();
+      fos.write('\n');
+    } catch (IOException e) {
+      log.warn("Unable to write file {}", dest, e);
     }
-//
-//    public static void readStudiesDirectory(Map<String,Attributes> studies, File file) {
-//        try {
-//            List<Attributes> studiesArr = JsonAccess.read(file);
-//            for (Attributes attr : studiesArr) {
-//                String studyUID = attr.getString(Tag.StudyInstanceUID);
-//                studies.put(studyUID, attr);
-//            }
-//        } catch(IOException e) {
-//            log.warn("No studies directory read for {}", file);
-//        }
-//    }
+    log.debug("Wrote single to {} / {}", dir, dest);
+  }
 
-    public void setPretty(boolean b) {
-        pretty = b;
+  public static List<Attributes> read(FileHandler handler, String dir, String name) throws IOException {
+    List<Attributes> ret = new ArrayList<>();
+    try (InputStream is = handler.read(dir, name); GZIPInputStream gzip = new GZIPInputStream(is)) {
+      JsonParser parser = Json.createParser(gzip);
+      new JSONReader(parser).readDatasets((fmi, attr) -> {
+        ret.add(attr);
+      });
+      return ret;
     }
+  }
+
+  public void setPretty(boolean b) {
+    pretty = b;
+  }
 }

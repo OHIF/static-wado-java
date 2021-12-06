@@ -27,4 +27,12 @@ public class Stats {
       parent.add(name,-1,description,args);
     }
   }
+
+  public void summarize() {
+    log.warn("{}", this.name);
+    stats.forEach((name,count) -> {
+      log.warn("{} {}", name, count);
+    });
+    stats.clear();
+  }
 }

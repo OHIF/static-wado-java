@@ -13,8 +13,6 @@ import javax.imageio.ImageIO;
 import javax.imageio.stream.FileImageInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.BiConsumer;
 
 /**
@@ -22,7 +20,11 @@ import java.util.function.BiConsumer;
  * parsing and modification of the imaging data.
  */
 public class StudyManager {
+  public static final String INSTANCE_ONLY = "instanceMetadata";
   private static final Logger log = LoggerFactory.getLogger(StudyManager.class);
+  public static final String DEDUPLICATE_GROUP = "deduplicateGroup";
+  public static final String STUDY_METADATA = "studyMetadata";
+  public static final String DEDUPLICATE = "deduplicate";
 
   public BiConsumer<SopId, Attributes> instanceConsumer;
   public BiConsumer<SopId, Attributes> deduplicatedConsumer;
@@ -31,11 +33,55 @@ public class StudyManager {
   public CompleteStudyHandler studyHandler;
   public FileHandler fileHandler;
   public BiConsumer<SopId, Attributes> extractConsumer;
+  public BiConsumer<String, Attributes> studyConsumer;
 
   public Stats overallStats = new Stats("Overall Stats", null);
   public Stats studyStats = new Stats("StudyStats", overallStats);
 
-  private Map<String, Object> options = new HashMap<>();
+  public boolean isDeduplicateGroup() {
+    return deduplicateGroup || completeStudy;
+  }
+
+  public void setDeduplicateGroup(boolean deduplicateGroup) {
+    this.deduplicateGroup = deduplicateGroup;
+  }
+
+  public boolean isDeduplicate() {
+    return deduplicate || completeStudy;
+  }
+
+  public void setDeduplicate(boolean deduplicate) {
+    this.deduplicate = deduplicate || completeStudy;
+  }
+
+  public boolean isInstanceMetadata() {
+    return instanceMetadata;
+  }
+
+  public void setInstanceMetadata(boolean instanceMetadata) {
+    this.instanceMetadata = instanceMetadata;
+  }
+
+  public boolean isStudyMetadata() {
+    return studyMetadata || completeStudy;
+  }
+
+  public void setStudyMetadata(boolean studyMetadata) {
+    this.studyMetadata = studyMetadata;
+  }
+
+  public boolean isCompleteStudy() {
+    return completeStudy;
+  }
+
+  public void setCompleteStudy(boolean completeStudy) {
+    this.completeStudy = completeStudy;
+  }
+
+  private boolean deduplicateGroup, deduplicate, instanceMetadata, studyMetadata;
+  private boolean completeStudy = true;
+
+  private String dicomWebDir = System.getProperty("user.home") + "/dicomweb";
 
   public StudyManager() {
     studyHandler = new CompleteStudyHandler(this);
@@ -45,11 +91,10 @@ public class StudyManager {
     extractConsumer = new ExtractConsumer(this);
     fileHandler = new FileHandler(this);
     deduplicatedConsumer = new DeduplicateWriter(this);
+    studyConsumer = new StudyConsumer(this);
   }
 
   public String getDestinationTsuid() {
-    Object optionsTsuid = options.get("DestinationTsuid");
-    if (optionsTsuid instanceof String) return (String) optionsTsuid;
     return null;
   }
 
@@ -75,7 +120,7 @@ public class StudyManager {
       SopId id = factory.createSopId(attr);
       // Steps here are to extract the bulkdata, pixel data and then send the attr to the instance consumer.
       DicomImageReader reader = (DicomImageReader) ImageIO.getImageReadersByFormatName("DICOM").next();
-      studyStats.add("DICOMP10 Read",1,"Read DICOM Part 10 file {}/{}", dir,name);
+      studyStats.add("DICOMP10 Read",250,"Read DICOM Part 10 file {}/{}", dir,name);
       try (FileImageInputStream fiis = new FileImageInputStream(file)) {
         reader.setInput(fiis);
         id.setDicomImageReader(reader);
@@ -109,6 +154,10 @@ public class StudyManager {
     }
   }
 
+  public String getBulkdataName(String hashValue, String extension) {
+    return getBulkdataName(hashValue)+extension;
+  }
+
   public String getBulkdataName(String hashValue) {
     return "bulkdata/"+hashValue.substring(0,3) + "/" + hashValue.substring(3,5) + "/" + hashValue.substring(5);
   }
@@ -118,32 +167,31 @@ public class StudyManager {
   }
 
   public String getStudiesDir(String studyUid) {
-    Object optionsStudyDir = options.get("directory");
-    if (optionsStudyDir instanceof String) {
-      return ((String) optionsStudyDir) + "/studies/" + studyUid;
-    }
-    String userDir = System.getProperty("user.home");
-    return userDir + "/dicomweb/studies/" + studyUid;
+    return dicomWebDir + "/studies/" + studyUid;
   }
 
   public String getDeduplicatedDir(String studyUid) {
-    Object optionsStudyDir = options.get("directory");
-    if (optionsStudyDir instanceof String) {
-      return ((String) optionsStudyDir) + "/deduplicated/" + studyUid;
-    }
-    String userDir = System.getProperty("user.home");
-    return userDir + "/dicomweb/deduplicated/" + studyUid;
+    return dicomWebDir + "/deduplicated/" + studyUid;
   }
 
-
-  public String getInstancesDir(String studyUid) {
-    Object optionsStudyDir = options.get("directory");
-    if (optionsStudyDir instanceof String) {
-      return ((String) optionsStudyDir) + "/instances/" + studyUid;
-    }
-    String userDir = System.getProperty("user.home");
-    return userDir + "/dicomweb/instances/" + studyUid;
+  public String getDicomWebDir() {
+    return dicomWebDir;
   }
+
+  public void setDicomWebDir(String dir) {
+    if( dir==null ) return;
+    this.dicomWebDir = dir;
+  }
+
+  public String getDeduplicatedInstancesDir(String studyUid) {
+    return dicomWebDir  + "/instances/"+studyUid;
+  }
+
+  /** Returns the name of the deduplicated instance - excluding the directory names */
+  public String getDeduplicatedName(String hashValue) {
+    return hashValue + ".json.gz";
+  }
+
 
   /** Holder for study data.   */
   class StudyDataFactory implements AutoCloseable {
@@ -151,10 +199,10 @@ public class StudyManager {
 
     public SopId createSopId(Attributes attr) throws IOException {
       SopId ret = new SopId(attr);
-      if( data!=null && data.getStudyUid()!=ret.getStudyInstanceUid() ) {
+      if( data!=null && !data.getStudyUid().equals(ret.getStudyInstanceUid()) ) {
         StudyData completing = data;
         data = null;
-        studyHandler.completeStudy(data);
+        studyHandler.completeStudy(completing);
       }
       if( data==null ) {
         data = studyHandler.createStudy(ret);

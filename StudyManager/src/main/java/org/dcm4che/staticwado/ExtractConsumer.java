@@ -15,7 +15,7 @@ public class ExtractConsumer implements BiConsumer<SopId, Attributes> {
     // Returns a hash only if it just got added
     String hashValue = id.getStudyData().addExtract(extract);
     if( hashValue!=null ) {
-      JsonAccess.write(callbacks.fileHandler, callbacks.getStudiesDir(id), callbacks.getBulkdataName(hashValue), extract);
+      JsonAccess.writeSingle(callbacks.fileHandler, callbacks.getStudiesDir(id), callbacks.getBulkdataName(hashValue,".json.gz"), extract);
     }
   }
 }
