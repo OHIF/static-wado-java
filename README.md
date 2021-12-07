@@ -1,64 +1,44 @@
 # static-wado
+The canonical location of this is now [OHIF static-wado](https://github.com/OHIF/static-wado.git)
+
 A command line tool to generate static WADO metadata and bulkdata files.  
 The input for the tool is the locations of DICOM files.
 The output is a DICOMweb static directory structure.
-There are three types of operations which can be performed, and all three can be done at once.
-The first, converting single DICOM instances into single-instance bulkdata and metadata files just writes
-the instance level instance and metadata JSON files, as well as the deplicated data set referencing the written files.
-The second, generates the series and study level metadata responses from the deuplicated file dataset.
-The final one, uploads the JSON and bulkdata files to a cloud provider.
+There are three types of operations which can be performed, and all three can be
+done at once.  The first, converting single DICOM instances into bulkdata/pixeldata
+and deduplicated metadata.  The second groups the deduplicated metadata into sets
+that identify the information for the study.  The third actually writes out the
+study level metadata/query in the standard DICOMweb format.
 
-When run all together, these changes create a static structure that can be served as a DICOMweb service.
+When run all together, these changes create a static structure that can be 
+served as a DICOMweb service.  The fact that these are each independent stages 
+allows study metadata to safely be created in a fully distributed system.  There
+are timing requirements on writing the updates, and there are some retries that
+ensure eventual consistency, but those updates can be done on any or multiple of the
+distributed systems.
+
+
 
 ## Simple Output Structure
-The base or simple output structure starts with a top level directory studies/STUDY_UID/
-* File study.gz containing the study level JSON query response
-* File deduplicated-index.gz containing references to the current state of the study
-* metadata.gz containing the JSON metadata for the entire study information
-* File series.gz containing a complete series query for the study
-* instance.gz containing an instance query for the study
-* Directories series/SERIES_UID/
-  * File metadata.gz containing the metadata response for the series
-  * Directories instances/OBJECT_UID/
-      * File ../index.gz containing an instance level query for the series
-      * File metadata.gz containing the JSON metadata information for the series
-      * Directory frames containing files 1..n raw directory frames (optional)
-      * File pixeldata, containing a direct retrieve of the frame data (video only for now)
+See the [Archive Format](docs/archive-format.md) for details on
+how the output is organized.
 
 ## Hash Bulkdata Indexed Structure
 By default, the bulkdata associated with an instance will be stored in a directory structure indexed by hash values.  
-The basic structure is  HASH1/HASH2/HASH3.ext  where HASH1, 2 are the first
-part of the hash, HASH3 is the remainder of the hash.  The hash value is
-generated on the specified key/value pairs for JSON like structures, and on 
-the decompressed pixel data for images.  
-
-The file extensions are:
-* .raw for octet-stream/unencoded
-* .dcm for raw DICOM files
+The basic structure is bulkdata/{hash0-3}/{hash3-5}/{hash5-} where the hash is
+a hash value of the object.  This is the same structure used for partial hash contents.
 
 # Overall Design
-The basic design for Static WADO is an application at the top level to parse command line options, and then a library 
-with a few components in it to handle the scanning and output generation.
+The basic design for Static WADO is an application at the top level to parse 
+command line options, and then a library StudyManager that is basically a set of
+callbacks which are basically notifications on various events/data sets such as
+add single deduplicated object, handle study completion events etc.
 
 ## Client
-The first client is a simple app setting up the initial setup directories and options, and then calling the study manager to search for and convert files.  Other clients may appear over time for things like DIMSE dicom receive.
-
-## Managers
-In this implementation, only a study manager will exist.  It has the funcitonality to scan for studies, open up a study engine for each study as it comes in, and add instances to the study engine, calling the finalize/complete operation on the study engine once the next study is started.
-
-## Engines
-The study engine will have the pieces necessary to manage
-the bulkdata extraction, image conversion and de-duplication.
-
-TODO: Consider whether having an engine for each of bulkdata, image conversion and de-duplication is a good idea.
-Those are fairly independent components, so having one for each is
-probably a good idea.
-
-## Data Services
-A data service for query results (JSON), metadata results and bulkdata will 
-all be required. These might have two layers to them, one for File I/O
-and a second set for cloud I/O to separate the format concerns from the
-location concerns.
+The first client is a simple app setting up the initial setup directories
+and options, and then calling the study manager to search for and convert files.  
+Other clients may appear over time for things like DIMSE dicom receive, or writing 
+directly to cloud storage such as AWS S3.
 
 # Running Static Wado
 
@@ -76,15 +56,19 @@ assume that the bin directory is in the path.
 ## Converting a set of files and serving them locally
 Add build/install/StaticWado/bin to your path.
 For DICOM files located in /dicom/study1 and /dicom/study2, with the 
-output directory /dicomweb, and covnerting images to JPEG-LS, run:
+output directory ~/dicomweb the following command can be run:
 
-StaticWado -d /dicomweb -contentType jls /dicom/study1 /dicom/study2
+StaticWado /dicom/study1 /dicom/study2
 
 ## Serving up a local filesystem as DICOMweb
 Assuming you have the JavaScript npm manager installed, change your directory
 to the DICOMweb output directory, and run:
 
+cd ~/dicomweb
 npx http-server -p 5000 --cors -g
+
+There is also a custom web server supporting STOW and serving the right content
+types being developed.
 
 ## Accessing your local filesystem in OHIF
 Use the pre-configured local_static.js file, and then run:
@@ -95,48 +79,27 @@ Also, you can edit local_static.js to point to the full host name of the
 system hosting the files instead of http://localhost:5000
 
 ## Setting up AWS S3/Cloudfront for serving data
-TODO
-
-## Uploading to an S3 bucket
-Ensure that you have local credentials setup for AWS in the standard location,
-with access to your S3 bucket.  Run
-
-StaticWado -s3 -bucket s3-bucket-name -region us-east-2 -contentType jls -d /dicomweb /dicom/study1
-
-You can also use the -study <UID> to specify an already converted study.
-
-## Uploading to sub-directories for content type testing
-There is an option -type that will generate sub-directories of /dicomweb
-and upload them to the given sub-type name, where the type generated is the
-given type.  For example:
-
-StaticWado -type jls /dicom/study1
-
-will generate /dicomweb/jls/studies/... all encoded in JLS format.  That allows
-use of a sub-directory to determine the response type.  Video data will still
-be extracted as pixeldata in a streaming format.
-
+TODO - being worked on
 
 # TODO list
 
-* Split operations up into separate phases appropriate for lambda conversion
 * Add AWS setup guide
 * Support Google Cloud and Azure
 * Write a simple server for local use
 * Write a DICOM endpoint
-* Add storage of study data indices to FHIR
+* Add storage of study data indices to FHIR or ...
 * Support creation of QC DICOM operations, and apply them locally
 * Support patient/study data updates
 * Support HL7 updates
 
-
 # Serverless Function Design
-This is still preliminary, but the basic idea is to have a few phases for the
-serverless design.  
+The idea for the serverless design is to have three lambda functions which
+correspond to the three phases in the StaticWado command that can currently be run.
 
-1. Convert single instances to instance level metadata and bulkdata
-2. Gather up new instance level metadata into grouped hash keyed data
-3. Gather the grouped data into study level references and write the DICOMweb query files
+1. Convert single instances to deduplicated metadata and bulkdata/pixeldata
+2. Group deduplicated single instances into sets of deduplicated data
+3. Write study metadata/query information from the deduplicated data.
+4. If any file was updated in step #3, then reschedule step #3 for later
 
 ## Gathering single instances
 This process is triggered by a DICOM instance being added/received. 
@@ -147,98 +110,55 @@ to be done outside the cloud as the starting point.
 2. Replace it with a reference by hash, with offset/length information
    1. Alternate: replace with an offset reference to the DICOM file location
    2. In the DICOM file reference, still include the hashed value
-3. Store the images to the frames and/or pixeldata.  
-   1. Include the image hash in the reference URL (TODO - how)
-   2. Optionally compress the image
-4. Write the remaining metadata file at the instance level
+3. Store the images to the frames and/or pixeldata area 
+4. Extract duplicate information from the instance metadata, storing in bulkdata
+5. Store the single instance deduplicated item, by hash
 
 Note how this is thread safe provided a single DICOM instance is only added once,
 as it only writes things relative to the instance.  Dealing with receiving
-the same instance a second time can be managed by checking for existance of
-the metadata file already, and writing a new copy.  That part itself isn't
-thread safe, but there isn't a workflow where it is likely to receive different
-versions of the same data at the same time.
+the same instance a second time can be managed by checking for existence of
+the hash value - if it is present, it was already received.  Updating the SOP instance
+can be detected at the same time, as a full list of received SOP instances is
+available, and this can also be handled later.
 
 ## Creation of hash/grouped files
-Triggered by creation of one of more instance level metadata files.  Should
-be delayed by some amount of time, and grouped by study UID to avoid executing
-too many instances of this.  This can also be done within the DICOM receive
-process, as the data is already available at that point.
+Triggered by creation of one of more instance level deduplicated files.  
+The file are simply a set of all the deduplicated instance data, sorted and
+hashed as a group and then written out as a JSON list.
 
-The hash/grouped data files are located in the hash directory structure and
-contain
-* Patient data, both as-received and as-updated (a single file won't have both)
-* Study data
-* Groups of SOP references, in a deduplicated format
-* Other bulkdata, just hashed as is
+This phase will eventually need to deal with thing such as QC and
+various data update operations, including receiving the same SOP with different
+data more than once.
 
-This deduplication process splits off different types of data, and allows
-that to be written based a hash of the DICOM tag values.  The steps are:
-2. Extract Patient "query" results and Study data into their own instance within the JSON.
-3. Store the Study/Patient data into a file with a name based on the hash
-4. Group instances into referenced values either by series or at some study level grouping.
-   1. The series level grouping should be used when there is a lot of JSON data
-   2. There will typically be a lot of JSON data when there are lots of images in a series or for enhanced multiframe.
-   3. Group the remaining objects into a single group, store at the study level
-5. Write an index file referencing any index files used to create the new groups
-6. Schedule an update of the study metadata
+The thread safety of this phase is handled by:
+* Writing the deduplicated files named by hash value
+* If any new deduplicated files were written, then re-scheduling this operation for time+T
+* If the cluster operations are split, then scheduling a check for this study after recombining the cluster
 
-## deduplicated index generation
-The deduplicated index is a link to the group files and patient/study files
-which comprise the current state of the study.
+## Study Metadata Generation
+The deduplicated group files contain all the information required to re-create
+the DICOMweb standard metadata files.  This is a simple recombination of the 
+deduplicated files into their original JSON full metadata file, on a per-file
+basis, and then writing the data out.  The hash value deduplicated data 
+source should be stored along with the deduplicated instance data in order to
+provide for concurrent updates.  The process is:
+1. For each metadata or query file being written, read the current hash value of the deduplicated group it was generated from.
+2. If the hash value is different, then write a new copy of the deduplicated file, AND schedule another study metadata check
+3. If NO files were updated in this stage, then this stage is done, otherwise schedule another check for time +T
 
-The thread safety of this design relies on only adding to the deduplicated
-and hashed files, and using references by hash to older versions of the files,
-and then a process that performs the gathering and checking, causing the process
-to be re-run whenever a change is detected, so that a change will eventually
-be consistent.
+# Thread Safety of Retrieves
+The retrieves are current-value retrieves for all data.  That is, there is no
+guarantee that the data is up to date, as the guarantee is eventual consistency.
+The entire file is read from storage, with storage level locking being used to
+control availability of the file.  In the case where a file is being updated,
+and has just been removed, it may be necessary on some file systems to attempt
+a second retrieve after a short interval.
 
-The index directory name is index, and it contains JSON files in a DICOMweb
-like format.  Each file is named  <hash>.gz, and contains:
-1. A reference to the current study and patient hash files
-2. References to the series/grouped instance hash files
-3. References to the prior versions of the index
-4. References to deleted/moved data, plus the deletion reason
-
-The process to check/update the grouped data is thus:
-1. Read the top level deduplicated file, if present
-2. Check that the top level deduplicated file's referenced hash value includes every hash value in the index directory, other than it's own hash.
-3. If any index file is present but not referenced, then read all the other files in the index
-   1. If any one of the other files references all the files, then replace the top level deduplicated file
-   2. If there is new data in any of the sub-files, then create new hashed group files for them and add references
-   3. Add references to all the read indices to the new index file
-   4. Write a new index file with the name <hash>.gz for the hash code of the updated index
-4. For every series and at the study level, check the hash value in the query/metadata file
-   1. The hash value expected is the hash value of the group file that references that instance in the index file
-   2. This avoids re-writing query/metadata files when not needed
-   3. It is necessary to also check the current hash value of the study and patient data
-   4. Write a new file for any instance that is different
-5. If any update was performed, then schedule a unification check at time+1
-
-### Thread Safety for creation of index files
-Suppose multiple processes write index files, referencing a mixture of the
-same and updated data.  These files might contain:
-1. Exactly the same content, in which case the hash will be identical.  
-   1. At least one will succeed
-   2. Remaining ones can succeed or fail.
-2. References to shared data, plus new content.
-   1. The fact that references to shared data exist allows the shared data to be assumed by an updated process
-   2. A unification run of the update will occur in step #5 above
-      1. The unification run will merge two of more index files
-      2. The unification run MAY write new group files based on the new data
-      3. This run will then write a new index, referencing both original files
-
-### Thread Safety for creation of metadata and query files
-The unification run will compare the hash value of the group/study/patient
-files with that of the query/metadata file, and will update them when the
-index file has changed.  If any of these are out of date, another unification
-run is scheduled to ensure that the files are eventually in sync.
-
-### Thread Safety of fetch
-It is possible for retrieval of study data to be out of sync, by up to the
-cache time for these files, plus the unification run time.  Given that, the
-query and metadata files should have a relatively short cache time, while the
-bulkdata and deduplicated files can have a very long cache time.
+It is also possible to integrate the update checks from the study metadata
+generation into the initial retrieves.  That would incur a delay while study
+metadata files are written or updated, but that should be relatively short as
+the deduplication provides the data to generate the study metadata in an easily 
+accessible format.
 
 # QC Operations on Static Files
 It is possible for the static wado files to be updated with various quality
