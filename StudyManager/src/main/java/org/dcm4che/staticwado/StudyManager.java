@@ -104,11 +104,33 @@ public class StudyManager {
    * @param files
    */
   public int scanDicom(String... files) {
-    try( var studyDataFactory = new StudyDataFactory() ) {
+    if (files.length == 0) {
+      return scanNotify();
+    }
+    try (var studyDataFactory = new StudyDataFactory()) {
       return DirScanner.scan(null, (dir, name) -> {
         importDicom(dir, name, studyDataFactory);
       }, files);
     }
+  }
+
+  public int scanNotify() {
+    var dir = getNotifyDir();
+    var files = fileHandler.listContentsIncreasingAge(dir);
+    files.forEach(name -> {
+      StudyData data = new StudyData(name, this);
+      data.readDeduplicatedGroup();
+      data.readDeduplicatedInstances();
+      if( data.isEmpty() ) return;
+      studyHandler.completeStudy(data);
+    });
+    return files.size();
+  }
+
+  public String getNotifyDir() {
+    if (isDeduplicateGroup()) return dicomWebDir + "/instances";
+    if (isStudyMetadata()) return dicomWebDir + "/deduplicated";
+    return dicomWebDir + "/studies";
   }
 
   public void importDicom(String dir, String name, StudyDataFactory factory) {
@@ -120,7 +142,7 @@ public class StudyManager {
       SopId id = factory.createSopId(attr);
       // Steps here are to extract the bulkdata, pixel data and then send the attr to the instance consumer.
       DicomImageReader reader = (DicomImageReader) ImageIO.getImageReadersByFormatName("DICOM").next();
-      studyStats.add("DICOMP10 Read",250,"Read DICOM Part 10 file {}/{}", dir,name);
+      studyStats.add("DICOMP10 Read", 250, "Read DICOM Part 10 file {}/{}", dir, name);
       try (FileImageInputStream fiis = new FileImageInputStream(file)) {
         reader.setInput(fiis);
         id.setDicomImageReader(reader);
@@ -145,7 +167,7 @@ public class StudyManager {
         }, true);
         instanceConsumer.accept(id, attr);
       } catch (Exception e) {
-        overallStats.add("Non DICOM P10", 1, "Unable to process {}",e);
+        overallStats.add("Non DICOM P10", 1, "Unable to process {}", e);
       }
     } catch (DicomStreamException dse) {
       log.debug("Skipping non-dicom {}", file);
@@ -155,11 +177,11 @@ public class StudyManager {
   }
 
   public String getBulkdataName(String hashValue, String extension) {
-    return getBulkdataName(hashValue)+extension;
+    return getBulkdataName(hashValue) + extension;
   }
 
   public String getBulkdataName(String hashValue) {
-    return "bulkdata/"+hashValue.substring(0,3) + "/" + hashValue.substring(3,5) + "/" + hashValue.substring(5);
+    return "bulkdata/" + hashValue.substring(0, 3) + "/" + hashValue.substring(3, 5) + "/" + hashValue.substring(5);
   }
 
   public String getStudiesDir(SopId id) {
@@ -179,32 +201,36 @@ public class StudyManager {
   }
 
   public void setDicomWebDir(String dir) {
-    if( dir==null ) return;
+    if (dir == null) return;
     this.dicomWebDir = dir;
   }
 
   public String getDeduplicatedInstancesDir(String studyUid) {
-    return dicomWebDir  + "/instances/"+studyUid;
+    return dicomWebDir + "/instances/" + studyUid;
   }
 
-  /** Returns the name of the deduplicated instance - excluding the directory names */
+  /**
+   * Returns the name of the deduplicated instance - excluding the directory names
+   */
   public String getDeduplicatedName(String hashValue) {
-    return hashValue + ".json.gz";
+    return hashValue + ".gz";
   }
 
 
-  /** Holder for study data.   */
+  /**
+   * Holder for study data.
+   */
   class StudyDataFactory implements AutoCloseable {
     StudyData data;
 
     public SopId createSopId(Attributes attr) throws IOException {
       SopId ret = new SopId(attr);
-      if( data!=null && !data.getStudyUid().equals(ret.getStudyInstanceUid()) ) {
+      if (data != null && !data.getStudyUid().equals(ret.getStudyInstanceUid())) {
         StudyData completing = data;
         data = null;
         studyHandler.completeStudy(completing);
       }
-      if( data==null ) {
+      if (data == null) {
         data = studyHandler.createStudy(ret);
       }
       ret.setStudyData(data);
@@ -213,7 +239,7 @@ public class StudyManager {
 
     @Override
     public void close() {
-      if( data!=null ) {
+      if (data != null) {
         studyHandler.completeStudy(data);
         data = null;
       }

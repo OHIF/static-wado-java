@@ -14,7 +14,7 @@ public class DeduplicateWriter implements BiConsumer<SopId, Attributes> {
     @Override
     public void accept(SopId sopId, Attributes attributes) {
         String hashValue = DicomAccess.getHash(attributes);
-        JsonAccess.writeSingle(callbacks.fileHandler,
+        JsonAccess.write(callbacks.fileHandler,
             callbacks.getDeduplicatedInstancesDir(sopId.getStudyInstanceUid()),
             callbacks.getDeduplicatedName(hashValue), attributes);
         callbacks.studyStats.add("WriteInstanceDeduplicate", 100,

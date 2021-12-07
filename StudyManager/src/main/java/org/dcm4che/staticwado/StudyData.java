@@ -31,8 +31,13 @@ public class StudyData {
     private final String studyDir;
 
     public StudyData(SopId id, StudyManager callbacks) {
+        this(id.getStudyInstanceUid(), callbacks);
+
+    }
+
+    public StudyData(String uid, StudyManager callbacks) {
         this.callbacks = callbacks;
-        studyUid = id.getStudyInstanceUid();
+        studyUid = uid;
         studyDir = callbacks.getStudiesDir(studyUid);
     }
 
@@ -92,6 +97,10 @@ public class StudyData {
         return true;
     }
 
+    public boolean isEmpty() {
+        return deduplicated.isEmpty();
+    }
+
     static class SeriesRecord {
         public final String seriesUid;
         public final Attributes seriesQuery;
@@ -108,6 +117,7 @@ public class StudyData {
             this.instancesQuery.add(TagLists.INSTANCE_QUERY.select(instance));
         }
     }
+
     /**
      * Generate study/series/instance query objects and series level metadata files.
      */
@@ -177,10 +187,10 @@ public class StudyData {
     public Attributes getOrLoadExtract(String hashValue) {
         return extractData.computeIfAbsent(hashValue, (key) -> {
             try {
-                List<Attributes> list = JsonAccess.read(callbacks.fileHandler, callbacks.getStudiesDir(studyUid),
-                    callbacks.getBulkdataName(hashValue) + ".json.gz");
-                if( list!=null && list.size()>0 ) return list.get(0);
-                log.warn("Extract data at {} is null or too many values", callbacks.getBulkdataName((hashValue)));
+                Attributes extract = JsonAccess.readSingle(callbacks.fileHandler, callbacks.getStudiesDir(studyUid),
+                    callbacks.getBulkdataName(hashValue,".json.gz"));
+                if( extract!=null ) return extract;
+                log.warn("Extract data at {} is null", callbacks.getBulkdataName((hashValue)));
                 return null;
             } catch(IOException e) {
                 log.warn("Unable to read {}", hashValue, e);
@@ -190,8 +200,38 @@ public class StudyData {
     }
 
     public void readDeduplicatedGroup() {
+        readDeduplicatedDir(callbacks.getDeduplicatedDir(studyUid));
+    }
+
+    public void readDeduplicatedDir(String dir) {
+        List<String> files = callbacks.fileHandler.listContentsIncreasingAge(dir);
+        files.forEach(file -> {
+           if( !file.endsWith(".gz") ) return;
+           String hashValue = file.substring(0,file.length()-3);
+           if( readHashes.containsKey(hashValue) ) return;
+           readHashes.put(hashValue,file);
+           try {
+               var items = JsonAccess.read(callbacks.fileHandler, dir, file);
+               items.forEach(attr -> {
+                  String type = attr.getString(DicomAccess.DEDUPPED_CREATER,DicomAccess.DEDUPPED_TYPE);
+                  if( DicomAccess.INFO_TYPE.equals(type) ) {
+                     String[] refs = attr.getStrings(DicomAccess.DEDUPPED_CREATER,DicomAccess.DEDUPPED_REF,VR.CS);
+                     if( refs!=null ) {
+                         Arrays.stream(refs).forEach( ref -> readHashes.put(ref,file) );
+                     }
+                  } else if( DicomAccess.INSTANCE_TYPE.equals(type) ) {
+                      addDeduplicated(attr);
+                  } else {
+                      addExtract(attr);
+                  }
+               });
+           } catch(IOException e) {
+               log.warn("Failed to read {}/{} because {}", dir,file,e);
+           }
+        });
     }
 
     public void readDeduplicatedInstances() {
+        readDeduplicatedDir(callbacks.getDeduplicatedInstancesDir(studyUid));
     }
 }

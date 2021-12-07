@@ -4,7 +4,6 @@ import org.dcm4che3.data.Attributes;
 
 import java.io.*;
 import java.util.*;
-import java.util.zip.GZIPInputStream;
 
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.VR;
@@ -81,8 +80,8 @@ public class JsonAccess {
 
   public static List<Attributes> read(FileHandler handler, String dir, String name) throws IOException {
     List<Attributes> ret = new ArrayList<>();
-    try (InputStream is = handler.read(dir, name); GZIPInputStream gzip = new GZIPInputStream(is)) {
-      JsonParser parser = Json.createParser(gzip);
+    try (InputStream is = handler.read(dir, name)) {
+      JsonParser parser = Json.createParser(is);
       new JSONReader(parser).readDatasets((fmi, attr) -> {
         ret.add(attr);
       });
@@ -90,6 +89,15 @@ public class JsonAccess {
     }
   }
 
+
+  public static Attributes readSingle(FileHandler handler, String dir, String name) throws IOException {
+    try (InputStream is = handler.read(dir, name)) {
+      JsonParser parser = Json.createParser(is);
+      Attributes attr = new Attributes();
+      new JSONReader(parser).readDataset(attr);
+      return attr;
+    }
+  }
   public void setPretty(boolean b) {
     pretty = b;
   }
