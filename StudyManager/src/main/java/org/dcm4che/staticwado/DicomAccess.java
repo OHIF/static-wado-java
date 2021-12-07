@@ -11,7 +11,9 @@ import java.io.OutputStream;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 /** Provides access to DICOM binary files */
@@ -24,13 +26,16 @@ public class DicomAccess {
     public static final int DEDUPPED_CREATOR_GROUP = 0x00091000;
 
     // The hash value that this item can be referenced by
-    public static final int DEDUPPED_HASH = 0x00090010;
-
-    // The hash value that this item can be referenced by
     public static final int DEDUPPED_REF = 0x00090010;
 
     // The hash value that this item can be referenced by
-    public static final int DEDUPPED_NAME = 0x00090010;
+    public static final int DEDUPPED_HASH = 0x00090011;
+
+    // The hash value that this item can be referenced by
+    public static final int DEDUPPED_TYPE = 0x00090012;
+
+    public static final String INSTANCE_TYPE = "instance";
+    public static final String INFO_TYPE = "info";
 
     // The maximum length of a LUT table
     static final int LUT_LENGTH_MAX = 64*1024*2;
@@ -45,13 +50,10 @@ public class DicomAccess {
         return tag==Tag.PixelData || length > LUT_LENGTH_MAX;
     }
 
-    public static Attributes readFile(String path, File bulkFile) throws IOException {
-        bulkFile.mkdirs();
-        try(DicomInputStream dis = new DicomInputStream(new File(path))) {
+    public static Attributes readFile(FileHandler fileHandler, String dir, String name) throws IOException {
+        // TODO - use fileHandler.read and make the BulkData values reference the read stream URL
+        try(DicomInputStream dis = new DicomInputStream(new File(new File(dir),name))) {
             dis.setIncludeBulkData(DicomInputStream.IncludeBulkData.URI);
-            dis.setBulkDataDirectory(bulkFile);
-            dis.setBulkDataFileSuffix(".raw");
-
             dis.setBulkDataDescriptor(DicomAccess::descriptor);
             Attributes fmi = dis.readFileMetaInformation();
             String transferSyntax = fmi!=null ? fmi.getString(Tag.TransferSyntaxUID) : UID.ImplicitVRLittleEndian;
@@ -61,22 +63,41 @@ public class DicomAccess {
         }
     }
 
-    /** Returns a SHA1 sum of the attributes instances */
-    public static String hashAttributes(Attributes testAttr) {
-        try(HashOutputStream hos = new HashOutputStream(); DicomOutputStream dos = new DicomOutputStream(hos,UID.ImplicitVRLittleEndian)) {
-            dos.writeDataset(null,testAttr);
+    public static String getHash(Attributes src) {
+        String currentHash = src.getString(DEDUPPED_CREATER,DEDUPPED_HASH);
+        if( currentHash!=null ) return currentHash;
+        currentHash = hashAttributes(src);
+        src.setString(DEDUPPED_CREATER, DEDUPPED_HASH,VR.CS, currentHash);
+        return currentHash;
+    }
+
+    public static void setRefs(Attributes data, Collection<String> refs) {
+        var list = new ArrayList<>(refs);
+        list.sort(String::compareTo);
+        data.setString(DEDUPPED_CREATER,DEDUPPED_REF,VR.CS,list.toArray(String[]::new));
+    }
+
+    /** Returns a hash of the attributes instances */
+    public static String hashAttributes(Attributes... attrs) {
+        try(HashOutputStream hos = new HashOutputStream()) {
+            for(Attributes attr : attrs) {
+                try (DicomOutputStream dos = new DicomOutputStream(hos, UID.ImplicitVRLittleEndian)) {
+                    dos.writeDataset(null, attr);
+                }
+            }
             return hos.getHash();
         } catch(IOException e) {
             throw new Error(e);
         }
     }
 
-    public static void addToStrings(Attributes attr, String creator, int tag, String value) {
+    public static void addToStrings(Attributes attr, String creator, int tag, VR vr, String value) {
         String[] values = attr.getStrings(creator,tag);
         if( values==null || values.length==0 ) {
-            attr.setString(creator,tag,VR.ST, value);
+            attr.setString(creator,tag,vr, value);
             return;
         }
+        if( Arrays.stream(values).anyMatch(itemValue -> itemValue.equals(value))) return;
         String[] newValues = Arrays.copyOf(values,values.length+1);
         newValues[newValues.length-1] = value;
         attr.setString(creator,tag,VR.ST,newValues);

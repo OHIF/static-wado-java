@@ -1,122 +1,249 @@
 package org.dcm4che.staticwado;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import org.dcm4che3.data.Attributes;
+import org.dcm4che3.data.BulkData;
+import org.dcm4che3.data.Fragments;
 import org.dcm4che3.data.Tag;
+import org.dcm4che3.imageio.plugins.dcm.DicomImageReader;
 import org.dcm4che3.io.DicomStreamException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** The study manager handles DICOM studies in the static WADO tree.  
- * It uses various components to handle the generation.
- * <ul>
- *   <li>StudyMetadataEngine to generate the basic result tree</li>
- * </ul>
+import javax.imageio.ImageIO;
+import javax.imageio.stream.FileImageInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.util.function.BiConsumer;
+
+/**
+ * The callbacks used for generating DICOM data - setup with a default set that is appropriate for basic
+ * parsing and modification of the imaging data.
  */
 public class StudyManager {
-    private static final Logger log = LoggerFactory.getLogger(StudyManager.class);
+  public static final String INSTANCE_ONLY = "instanceMetadata";
+  private static final Logger log = LoggerFactory.getLogger(StudyManager.class);
+  public static final String DEDUPLICATE_GROUP = "deduplicateGroup";
+  public static final String STUDY_METADATA = "studyMetadata";
+  public static final String DEDUPLICATE = "deduplicate";
 
-    File bulkTempDir;
-    File exportDir;
-    Map<String, Attributes> studies = new HashMap<>();
-    StudyMetadataEngine engine = new StudyMetadataEngine();
-    private long lastLog;
-    private List<String> addedStudies = new ArrayList<>();
+  public BiConsumer<SopId, Attributes> instanceConsumer;
+  public BiConsumer<SopId, Attributes> deduplicatedConsumer;
+  public ExtractImageFrames imageConsumer;
+  public ExtractImageFrames bulkConsumer;
+  public CompleteStudyHandler studyHandler;
+  public FileHandler fileHandler;
+  public BiConsumer<SopId, Attributes> extractConsumer;
+  public BiConsumer<String, Attributes> studyConsumer;
 
-    // 5 second relog
-    private static final long RELOG_TIME = 1000L*1000L*1000L*5;
+  public Stats overallStats = new Stats("Overall Stats", null);
+  public Stats studyStats = new Stats("StudyStats", overallStats);
 
-    /**
-     * Imports a set of studies from the given directory input, and writes the data to the directory out.
-     */
-    public String[] importStudies(String... importDirs) {
-        bulkTempDir = new File(exportDir,"temp/"+Math.random());
-        bulkTempDir.mkdirs();
-        for(String importDir : importDirs) {
-            importFile(new File(importDir));
-        }
-        engine.finalizeStudy();
-        FileHandler handler = new FileHandler(exportDir);
-        JsonWadoAccess json = new JsonWadoAccess(handler);
-        json.setPretty(true);
-        json.writeJson("../studies.json", studies.values().toArray(Attributes[]::new));
-        handler.setGzip(true);
-        json.writeJson("../studies", studies.values().toArray(Attributes[]::new));
-        return addedStudies.toArray(String[]::new);
+  public boolean isDeduplicateGroup() {
+    return deduplicateGroup || completeStudy;
+  }
+
+  public void setDeduplicateGroup(boolean deduplicateGroup) {
+    this.deduplicateGroup = deduplicateGroup;
+  }
+
+  public boolean isDeduplicate() {
+    return deduplicate || completeStudy;
+  }
+
+  public void setDeduplicate(boolean deduplicate) {
+    this.deduplicate = deduplicate || completeStudy;
+  }
+
+  public boolean isInstanceMetadata() {
+    return instanceMetadata;
+  }
+
+  public void setInstanceMetadata(boolean instanceMetadata) {
+    this.instanceMetadata = instanceMetadata;
+  }
+
+  public boolean isStudyMetadata() {
+    return studyMetadata || completeStudy;
+  }
+
+  public void setStudyMetadata(boolean studyMetadata) {
+    this.studyMetadata = studyMetadata;
+  }
+
+  public boolean isCompleteStudy() {
+    return completeStudy;
+  }
+
+  public void setCompleteStudy(boolean completeStudy) {
+    this.completeStudy = completeStudy;
+  }
+
+  private boolean deduplicateGroup, deduplicate, instanceMetadata, studyMetadata;
+  private boolean completeStudy = true;
+
+  private String dicomWebDir = System.getProperty("user.home") + "/dicomweb";
+
+  public StudyManager() {
+    studyHandler = new CompleteStudyHandler(this);
+    instanceConsumer = new InstanceDeduplicate(this);
+    imageConsumer = new ExtractImageFrames(this);
+    bulkConsumer = imageConsumer;
+    extractConsumer = new ExtractConsumer(this);
+    fileHandler = new FileHandler(this);
+    deduplicatedConsumer = new DeduplicateWriter(this);
+    studyConsumer = new StudyConsumer(this);
+  }
+
+  public String getDestinationTsuid() {
+    return null;
+  }
+
+  /**
+   * Scans the specified directories for DICOM Part 10 files, and parse/send them to the  instanceHandler.
+   *
+   * @param files
+   */
+  public int scanDicom(String... files) {
+    if (files.length == 0) {
+      return scanNotify();
     }
+    try (var studyDataFactory = new StudyDataFactory()) {
+      return DirScanner.scan(null, (dir, name) -> {
+        importDicom(dir, name, studyDataFactory);
+      }, files);
+    }
+  }
 
-    private void importFile(File file) {
-        if( file.isDirectory() ) {
-            log.debug("Directory {} being recursed into", file);
-            for(File subFile : file.listFiles()) {
-                importFile(subFile);
+  public int scanNotify() {
+    var dir = getNotifyDir();
+    var files = fileHandler.listContentsIncreasingAge(dir);
+    files.forEach(name -> {
+      StudyData data = new StudyData(name, this);
+      data.readDeduplicatedGroup();
+      data.readDeduplicatedInstances();
+      if( data.isEmpty() ) return;
+      studyHandler.completeStudy(data);
+    });
+    return files.size();
+  }
+
+  public String getNotifyDir() {
+    if (isDeduplicateGroup()) return dicomWebDir + "/instances";
+    if (isStudyMetadata()) return dicomWebDir + "/deduplicated";
+    return dicomWebDir + "/studies";
+  }
+
+  public void importDicom(String dir, String name, StudyDataFactory factory) {
+    File file = new File(new File(dir), name);
+
+    try {
+      Attributes attr = DicomAccess.readFile(fileHandler, dir, name);
+      if (attr == null) return;
+      SopId id = factory.createSopId(attr);
+      // Steps here are to extract the bulkdata, pixel data and then send the attr to the instance consumer.
+      DicomImageReader reader = (DicomImageReader) ImageIO.getImageReadersByFormatName("DICOM").next();
+      studyStats.add("DICOMP10 Read", 250, "Read DICOM Part 10 file {}/{}", dir, name);
+      try (FileImageInputStream fiis = new FileImageInputStream(file)) {
+        reader.setInput(fiis);
+        id.setDicomImageReader(reader);
+        attr.accept((retrievePath, tag, vr, value) -> {
+          if (value instanceof BulkData) {
+            BulkData bulk = (BulkData) value;
+            log.debug("Moving bulkdata item {}", bulk.getURI());
+            if (tag == Tag.PixelData) {
+              imageConsumer.saveUncompressed(id, attr, bulk);
+            } else {
+              bulkConsumer.saveBulkdata(id, attr, tag, bulk);
             }
-        } else {
-            log.debug("File {} being examined", file);
-            tryImportDicom(file);
-        }
+          } else if (value instanceof Fragments) {
+            Fragments fragments = (Fragments) value;
+            if (tag == Tag.PixelData) {
+              imageConsumer.saveCompressed(id, attr, fragments);
+            } else {
+              throw new UnsupportedOperationException("Not implemented yet");
+            }
+          }
+          return true;
+        }, true);
+        instanceConsumer.accept(id, attr);
+      } catch (Exception e) {
+        overallStats.add("Non DICOM P10", 1, "Unable to process {}", e);
+      }
+    } catch (DicomStreamException dse) {
+      log.debug("Skipping non-dicom {}", file);
+    } catch (IOException e) {
+      log.warn("Caught exception: {}", e.toString());
+    }
+  }
+
+  public String getBulkdataName(String hashValue, String extension) {
+    return getBulkdataName(hashValue) + extension;
+  }
+
+  public String getBulkdataName(String hashValue) {
+    return "bulkdata/" + hashValue.substring(0, 3) + "/" + hashValue.substring(3, 5) + "/" + hashValue.substring(5);
+  }
+
+  public String getStudiesDir(SopId id) {
+    return getStudiesDir(id.getStudyInstanceUid());
+  }
+
+  public String getStudiesDir(String studyUid) {
+    return dicomWebDir + "/studies/" + studyUid;
+  }
+
+  public String getDeduplicatedDir(String studyUid) {
+    return dicomWebDir + "/deduplicated/" + studyUid;
+  }
+
+  public String getDicomWebDir() {
+    return dicomWebDir;
+  }
+
+  public void setDicomWebDir(String dir) {
+    if (dir == null) return;
+    this.dicomWebDir = dir;
+  }
+
+  public String getDeduplicatedInstancesDir(String studyUid) {
+    return dicomWebDir + "/instances/" + studyUid;
+  }
+
+  /**
+   * Returns the name of the deduplicated instance - excluding the directory names
+   */
+  public String getDeduplicatedName(String hashValue) {
+    return hashValue + ".gz";
+  }
+
+
+  /**
+   * Holder for study data.
+   */
+  class StudyDataFactory implements AutoCloseable {
+    StudyData data;
+
+    public SopId createSopId(Attributes attr) throws IOException {
+      SopId ret = new SopId(attr);
+      if (data != null && !data.getStudyUid().equals(ret.getStudyInstanceUid())) {
+        StudyData completing = data;
+        data = null;
+        studyHandler.completeStudy(completing);
+      }
+      if (data == null) {
+        data = studyHandler.createStudy(ret);
+      }
+      ret.setStudyData(data);
+      return ret;
     }
 
-    private void tryImportDicom(File file) {
-        try {
-            importDicom(file);
-        } catch(DicomStreamException dse) {
-            log.debug("Skipping non-dicom {}", file);
-        } catch(IOException e) {
-            log.warn("Caught exception:"+e);
-        }
+    @Override
+    public void close() {
+      if (data != null) {
+        studyHandler.completeStudy(data);
+        data = null;
+      }
     }
+  }
 
-    void importDicom(File file) throws IOException {
-        Attributes attr = DicomAccess.readFile(file.getPath(), bulkTempDir);
-        String studyUID = attr.getString(Tag.StudyInstanceUID);
-        if( studyUID==null ) {
-            if( file.getName().contains("DICOMDIR") ) return;
-            log.warn("Null studyUID on {}", file);
-            return;
-        }
-        if( engine.isNewStudy(studyUID) ) {
-            engine.finalizeStudy();
-            log.warn("Adding a new study UID {}", studyUID);
-            Attributes studyAttr = engine.openNewStudy(attr, exportDir);
-            studies.put(studyUID, studyAttr);
-            addedStudies.add(studyUID);
-            lastLog = System.nanoTime();
-        } else if( System.nanoTime()-lastLog > RELOG_TIME ) {
-            lastLog = System.nanoTime();
-            log.warn("Continuing study {} on sop {}", studyUID, attr.getString(Tag.SOPInstanceUID));
-        }
-        engine.addPart10Object(file, attr);
-    }
-
-    public void setExportDir(String name) {
-        this.exportDir = new File(name+"/studies");
-        JsonWadoAccess.readStudiesDirectory(studies,new File(name+"/studies.gz"));
-    }
-
-    public String getTransferSyntaxUid() {
-        return engine.getTransferSyntaxUid();
-    }
-
-    public void setTransferSyntaxUid(String imageContentType) {
-        engine.setTransferSyntaxUid(imageContentType);
-    }
-
-    public void setIncludeInstances(boolean val) {
-        engine.setIncludeInstances(val);
-    }
-
-    public void setIncludeDeduplicated(boolean val) {
-        engine.setIncludeDeduplicated(val);
-    }
-
-    public void setRecompress(String recompress) {
-        engine.setRecompress(recompress);
-    }
 }
