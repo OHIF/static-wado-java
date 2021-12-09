@@ -133,6 +133,29 @@ public class StudyManager {
     return dicomWebDir + "/studies";
   }
 
+  public void importDicom(SopId id, Attributes attr) throws Exception {
+    attr.accept((retrievePath, tag, vr, value) -> {
+      if (value instanceof BulkData) {
+        BulkData bulk = (BulkData) value;
+        log.debug("Moving bulkdata item {}", bulk.getURI());
+        if (tag == Tag.PixelData) {
+          imageConsumer.saveUncompressed(id, attr, bulk);
+        } else {
+          bulkConsumer.saveBulkdata(id, attr, tag, bulk);
+        }
+      } else if (value instanceof Fragments) {
+        Fragments fragments = (Fragments) value;
+        if (tag == Tag.PixelData) {
+          imageConsumer.saveCompressed(id, attr, fragments);
+        } else {
+          throw new UnsupportedOperationException("Not implemented yet");
+        }
+      }
+      return true;
+    }, true);
+    instanceConsumer.accept(id, attr);
+  }
+
   public void importDicom(String dir, String name, StudyDataFactory factory) {
     File file = new File(new File(dir), name);
 
@@ -140,32 +163,14 @@ public class StudyManager {
       Attributes attr = DicomAccess.readFile(fileHandler, dir, name);
       if (attr == null) return;
       SopId id = factory.createSopId(attr);
+      if( id.getStudyData().alreadyExists(id) ) return;
       // Steps here are to extract the bulkdata, pixel data and then send the attr to the instance consumer.
       DicomImageReader reader = (DicomImageReader) ImageIO.getImageReadersByFormatName("DICOM").next();
       studyStats.add("DICOMP10 Read", 250, "Read DICOM Part 10 file {}/{}", dir, name);
       try (FileImageInputStream fiis = new FileImageInputStream(file)) {
         reader.setInput(fiis);
         id.setDicomImageReader(reader);
-        attr.accept((retrievePath, tag, vr, value) -> {
-          if (value instanceof BulkData) {
-            BulkData bulk = (BulkData) value;
-            log.debug("Moving bulkdata item {}", bulk.getURI());
-            if (tag == Tag.PixelData) {
-              imageConsumer.saveUncompressed(id, attr, bulk);
-            } else {
-              bulkConsumer.saveBulkdata(id, attr, tag, bulk);
-            }
-          } else if (value instanceof Fragments) {
-            Fragments fragments = (Fragments) value;
-            if (tag == Tag.PixelData) {
-              imageConsumer.saveCompressed(id, attr, fragments);
-            } else {
-              throw new UnsupportedOperationException("Not implemented yet");
-            }
-          }
-          return true;
-        }, true);
-        instanceConsumer.accept(id, attr);
+        importDicom(id,attr);
       } catch (Exception e) {
         overallStats.add("Non DICOM P10", 1, "Unable to process {}", e);
       }
@@ -216,11 +221,15 @@ public class StudyManager {
     return hashValue + ".gz";
   }
 
+  public StudyDataFactory createStudyDataFactory() {
+    return new StudyDataFactory();
+  }
+
 
   /**
    * Holder for study data.
    */
-  class StudyDataFactory implements AutoCloseable {
+  public class StudyDataFactory implements AutoCloseable {
     StudyData data;
 
     public SopId createSopId(Attributes attr) throws IOException {

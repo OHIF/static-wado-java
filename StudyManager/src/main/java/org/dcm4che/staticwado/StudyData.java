@@ -56,14 +56,15 @@ public class StudyData {
 
     public String addDeduplicated(Attributes instance) {
         var hashValue = getHash(instance);
+        sopInstanceMap.getOrDefault(instance.getString(Tag.SOPInstanceUID), "imported");
         var current = deduplicated.putIfAbsent(hashValue, instance);
         if( current==null ) {
             readHashes.put(hashValue, callbacks.getDeduplicatedName(hashValue));
-            callbacks.studyStats.add("AddDeduplicated", 50, "Add deduplicated instance to {}",
+            callbacks.studyStats.add("AddDeduplicated", 5000, "Add deduplicated instance to {}",
                 studyUid);
             return hashValue;
         }
-        callbacks.studyStats.add("SkipDeduplicated", 500, "Skip deduplicated add instance {} to {}",
+        callbacks.studyStats.add("SkipDeduplicated", 5000, "Skip deduplicated add instance {} to {}",
             hashValue, studyUid);
         return null;
     }
@@ -90,7 +91,7 @@ public class StudyData {
         if( isStudyData ) {
             extractData.values().forEach(item -> writeList.add(item));
         }
-        JsonAccess.write(callbacks.fileHandler,dir,name,writeList.toArray(Attributes[]::new));
+        JsonAccess.write(callbacks.fileHandler,dir,name,isStudyData, writeList.toArray(Attributes[]::new));
         callbacks.studyStats.add("GroupDeduplicated", 1,
             "Combine single instance deduplicated objects into sets: {} instances",
             deduplicated.size());
@@ -99,6 +100,11 @@ public class StudyData {
 
     public boolean isEmpty() {
         return deduplicated.isEmpty();
+    }
+
+    /** If the sop UID already exists, then return true */
+    public boolean alreadyExists(SopId id) {
+        return sopInstanceMap.containsKey(id.getSopInstanceUid());
     }
 
     static class SeriesRecord {
@@ -146,13 +152,13 @@ public class StudyData {
             r.seriesQuery.setInt(Tag.NumberOfSeriesRelatedInstances,VR.IS,r.metadata.size());
             studyQ.setInt(Tag.NumberOfStudyRelatedInstances,VR.IS,r.metadata.size()+studyQ.getInt(Tag.NumberOfStudyRelatedInstances,0));
         });
-        JsonAccess.write(callbacks.fileHandler, studyDir, "studies", studyQuery.get());
+        JsonAccess.write(callbacks.fileHandler, studyDir, "studies", true, studyQuery.get());
         var seriesQuery = seriesContents.values().stream().map((r) -> r.seriesQuery).toArray(Attributes[]::new);
-        JsonAccess.write(callbacks.fileHandler, studyDir, "series", seriesQuery);
+        JsonAccess.write(callbacks.fileHandler, studyDir, "series", true, seriesQuery);
         seriesContents.forEach((key,r) -> {
-           JsonAccess.write(callbacks.fileHandler, studyDir+"/series/"+r.seriesUid, "metadata",
+           JsonAccess.write(callbacks.fileHandler, studyDir+"/series/"+r.seriesUid, "metadata",true,
                r.metadata.toArray(Attributes[]::new));
-            JsonAccess.write(callbacks.fileHandler, studyDir+"/series/"+r.seriesUid, "instances",
+            JsonAccess.write(callbacks.fileHandler, studyDir+"/series/"+r.seriesUid, "instances",true,
                 r.instancesQuery.toArray(Attributes[]::new));
         });
         writeDeduplicatedGroup(studyDir,

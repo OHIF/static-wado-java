@@ -46,7 +46,7 @@ public class InstanceDeduplicate implements BiConsumer<SopId,Attributes> {
         StudyData studyData = id.getStudyData();
         if( callbacks.isInstanceMetadata() ) {
             JsonAccess.write(callbacks.fileHandler, callbacks.getStudiesDir(id),
-                "series/"+id.getSeriesInstanceUid() + "/instances/"+id.getSopInstanceUid(),
+                "series/"+id.getSeriesInstanceUid() + "/instances/"+id.getSopInstanceUid(), false,
                 srcAttr);
         }
         Attributes dedupped = new Attributes(srcAttr);

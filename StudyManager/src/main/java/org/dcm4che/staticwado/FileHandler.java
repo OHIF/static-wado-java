@@ -1,7 +1,11 @@
 package org.dcm4che.staticwado;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.*;
 import java.math.BigInteger;
+import java.nio.file.FileAlreadyExistsException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -13,6 +17,8 @@ import java.util.zip.GZIPOutputStream;
  * It is designed to allow other output mechanisms to be used in place of the straight file operations
  */
 public class FileHandler {
+  private static Logger log = LoggerFactory.getLogger(FileHandler.class);
+
   StudyManager callbacks;
 
   public FileHandler(StudyManager callbacks) {
@@ -22,20 +28,35 @@ public class FileHandler {
   /**
    * Opens the given destination file for writing, as either gzip or non-gzip, AND deletes any older version of the wrong type (gzip or non-gzip).
    */
-  public OutputStream openForWrite(String dir, String name, boolean gzip) throws IOException {
+  public OutputStream openForWrite(String dir, String name, boolean gzip, boolean overwrite) throws IOException {
     if (name.endsWith(".gz")) {
       name = name.substring(0, name.length() - 3);
       gzip = true;
     }
     File fullName = new File(dir, name).getCanonicalFile();
+    File gzipName = new File(dir, name+".gz");
     fullName.getParentFile().mkdirs();
-    if (gzip) {
-      fullName.delete();
-      return new GZIPOutputStream(new FileOutputStream(new File(dir, name + ".gz")));
-    } else {
-      new File(dir, name + ".gz").delete();
-      return new FileOutputStream(new File(dir, name));
+    File finalName = gzip ? gzipName : fullName;
+    (gzip ? fullName : gzipName).delete();
+    if( !overwrite && finalName.canRead() ) {
+      throw new FileAlreadyExistsException("File "+finalName+" already exists");
     }
+    File tempFile = new File(fullName.getParentFile(),"temp-"+Math.random());
+    OutputStream os = new FileOutputStream(tempFile);
+    if( gzip ) {
+      os = new GZIPOutputStream(os);
+    }
+    return new FilterOutputStream(os) {
+      @Override
+      public void close() throws IOException {
+        super.close();
+        if( overwrite ) finalName.delete();
+        if( !tempFile.renameTo(finalName) ) {
+          if( overwrite ) log.warn("Unable to replace {} with {}", finalName, tempFile);
+          tempFile.delete();
+        }
+      }
+    };
   }
 
   /**
@@ -65,7 +86,7 @@ public class FileHandler {
   }
 
   /**
-   * Opens a file stream to write to the study directory.
+   * Opens a file stream to write to the study directory.  Replaces the existing file if it exists.
    *
    * @param id
    * @param dest
@@ -73,7 +94,7 @@ public class FileHandler {
    * @return
    */
   public OutputStream writeStudyDir(SopId id, String dest, boolean gzip) throws IOException {
-    return openForWrite(callbacks.getStudiesDir(id), dest, gzip);
+    return openForWrite(callbacks.getStudiesDir(id), dest, gzip, true);
   }
 
   public InputStream read(String dir, String name) throws IOException {

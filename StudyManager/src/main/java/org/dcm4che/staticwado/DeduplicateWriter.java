@@ -16,11 +16,12 @@ public class DeduplicateWriter implements BiConsumer<SopId, Attributes> {
         String hashValue = DicomAccess.getHash(attributes);
         JsonAccess.write(callbacks.fileHandler,
             callbacks.getDeduplicatedInstancesDir(sopId.getStudyInstanceUid()),
-            callbacks.getDeduplicatedName(hashValue), attributes);
+            callbacks.getDeduplicatedName(hashValue), false, attributes);
         callbacks.studyStats.add("WriteInstanceDeduplicate", 100,
             "Write to {} single instance deduplicate for {}",
             hashValue, sopId.getStudyInstanceUid());
         StudyData studyData = sopId.getStudyData();
+        callbacks.studyStats.add("ImportDeduplicate", 250, "Import deduplicate instance");
         studyData.addDeduplicated(attributes);
     }
 }

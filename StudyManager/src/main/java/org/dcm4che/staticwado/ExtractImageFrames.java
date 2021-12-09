@@ -200,7 +200,7 @@ public class ExtractImageFrames {
 
         boolean fragmented = fragments.size()!=frames+1;
         for(int i=1; i<=frames; i++) {
-            BulkData bulk = (BulkData) fragments.get(i);
+            Object bulk = fragments.get(i);
             convertImageFormat(reader,dir, attr, frameName+i, i, bulk, fragmented);
         }
 
@@ -244,7 +244,7 @@ public class ExtractImageFrames {
     public void saveMultipart(String dir, String dest, Object value, String contentType, String separator, boolean gzip) {
         byte[] separatorBytes = separator.getBytes(StandardCharsets.UTF_8);
         log.debug("Writing multipart {} content type {}", dest, contentType);
-        try(OutputStream os = callbacks.fileHandler.openForWrite(dir,dest,gzip)) {
+        try(OutputStream os = callbacks.fileHandler.openForWrite(dir,dest,gzip, true)) {
             os.write(DASH_BYTES);
             os.write(separatorBytes);
             os.write(NEWLINE_BYTES);
@@ -274,7 +274,7 @@ public class ExtractImageFrames {
     }
 
     public void saveSinglepart(String dir, String dest, Object value) {
-        try(OutputStream os = callbacks.fileHandler.openForWrite(dir, dest, false)) {
+        try(OutputStream os = callbacks.fileHandler.openForWrite(dir, dest, false, true)) {
             copyFrom(value,os);
         } catch(IOException e) {
             e.printStackTrace();
@@ -370,7 +370,7 @@ public class ExtractImageFrames {
      * It then writes it out to the given destination file in the specified format.  Formats can be multipart
      * encapsulated or raw.
      */
-    public void convertImageFormat(DicomImageReader reader, String dir, Attributes attr, String dest, int frame, BulkData bulk, boolean fragmented) {
+    public void convertImageFormat(DicomImageReader reader, String dir, Attributes attr, String dest, int frame, Object bulk, boolean fragmented) {
         Object writeData = bulk;
         String sourceTsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
         String writeType = CONTENT_TYPES.get(sourceTsuid);
@@ -416,7 +416,7 @@ public class ExtractImageFrames {
             callbacks.studyStats.add("Orig TS Image", 50, "Leaving {} as original type {} imageReader {} tsuid {}", sourceTsuid, writeType, reader, tsuid);
             gzip = UID.ImplicitVRLittleEndian.equals(tsuid) || UID.ExplicitVRLittleEndian.equals(tsuid);
         }
-        log.debug("Original bulkdata source is {}", bulk.getURI());
+        log.debug("Original bulkdata source is {}", (bulk instanceof BulkData) ? ((BulkData) bulk).getURI() : bulk);
         saveMultipart(dir,dest, writeData, writeType, SEPARATOR, gzip);
         saveSinglepart(dir, dest, writeData, writeType);
     }

@@ -4,6 +4,7 @@ import org.dcm4che3.data.UID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -24,9 +25,8 @@ public class StaticWado {
         TS_BY_TYPE.put("raw", null);
     }
 
-    private static CommandLine parseCommandLine(String[] args)
-            throws ParseException {
-        Options opts = new Options();
+
+    public static void addStudyManagerArgs(Options opts) {
         opts.addOption(new Option("d","dicomweb", true, "DICOMweb directory"));
         opts.addOption(new Option( StudyManager.DEDUPLICATE, false, "Generate single instance deduplicate data"));
         opts.addOption(Option.builder( StudyManager.DEDUPLICATE_GROUP)
@@ -39,19 +39,28 @@ public class StaticWado {
             .desc("Only generate instance level metadata/bulkdata")
             .build());
         opts.addOption(Option.builder("contentType")
-                .hasArg()
-                .desc("Sets the transfer syntax appropriately for one of: jll,jls,jpeg,j2k,orig.  Will not recompress.  Default is jls.")
-                .build());
+            .hasArg()
+            .desc("Sets the transfer syntax appropriately for one of: jll,jls,jpeg,j2k,orig.  Will not recompress.  Default is jls.")
+            .build());
         opts.addOption(Option.builder("recompress")
-                .hasArg()
-                .desc("Recompress already compressed files of the specified types (defaults to j2k,lei but can include jls, jll, jpeg)")
-                .build());
+            .hasArg()
+            .desc("Recompress already compressed files of the specified types (defaults to j2k,lei but can include jls, jll, jpeg)")
+            .build());
         opts.addOption(Option.builder("tsuid")
-                .hasArg()
-                .desc("Sets the transfer syntax directly")
-                .build());
+            .hasArg()
+            .desc("Sets the transfer syntax directly")
+            .build());
         opts.addOption(Option.builder("h").desc("Show help").build());
+    }
 
+    private static CommandLine parseCommandLine(String[] args)
+            throws ParseException {
+        Options opts = new Options();
+        addStudyManagerArgs(opts);
+        return parseCommandLine(opts, args);
+    }
+
+    public static CommandLine parseCommandLine(Options opts, String[] args) throws ParseException {
         CommandLineParser parser = new DefaultParser();
         CommandLine cl = parser.parse(opts, args);
         if (cl.hasOption("h")) {
@@ -65,8 +74,7 @@ public class StaticWado {
         return cl;
     }
 
-    public static void main(String[] args) throws Exception {
-        CommandLine cl = parseCommandLine(args);
+    public static StudyManager createStudyManager(CommandLine cl) {
         boolean deduplicate = cl.hasOption(StudyManager.DEDUPLICATE);
         boolean deduplicateGroup = cl.hasOption(StudyManager.DEDUPLICATE_GROUP);
         boolean studyMetadata = cl.hasOption(StudyManager.STUDY_METADATA);
@@ -81,7 +89,18 @@ public class StaticWado {
         manager.setStudyMetadata(studyMetadata);
         manager.setDeduplicateGroup(deduplicateGroup);
         manager.setDicomWebDir(cl.getOptionValue('d'));
+
+        return manager;
+    }
+
+    public static void main(String[] args) throws Exception {
+        CommandLine cl = parseCommandLine(args);
+        StudyManager manager = createStudyManager(cl);
+
         String[] otherArgs = cl.getArgs();
+
+        boolean server = false;
+
         manager.scanDicom(otherArgs);
     }
 }

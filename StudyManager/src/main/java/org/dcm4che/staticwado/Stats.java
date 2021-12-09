@@ -21,7 +21,11 @@ public class Stats {
   public void add(String name, int logCount, String description, Object...args) {
     var current = stats.compute(name, (key,val) -> (val==null ? 1 : val+1));
     if( logCount > 0 && current % logCount == 0 ) {
-      log.warn(description,args);
+      Object[] extraArgs = new Object[2+args.length];
+      extraArgs[0] = name;
+      extraArgs[1] = current;
+      System.arraycopy(args,0,extraArgs,2,args.length);
+      log.warn("{} {} "+description,extraArgs);
     }
     if( parent!=null ) {
       parent.add(name,-1,description,args);

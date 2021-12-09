@@ -3,6 +3,7 @@ package org.dcm4che.staticwado;
 import org.dcm4che3.data.Attributes;
 
 import java.io.*;
+import java.nio.file.FileAlreadyExistsException;
 import java.util.*;
 
 import org.dcm4che3.data.Tag;
@@ -47,9 +48,9 @@ public class JsonAccess {
    * @param dest       is a file name to write to
    * @param attributes is an array of objects to write to the given location
    */
-  public static void write(FileHandler handler, String dir, String dest, Attributes... attributes) {
+  public static void write(FileHandler handler, String dir, String dest, boolean overwrite, Attributes... attributes) {
     log.debug("Writing {} instances to {}", attributes.length, dest);
-    try (OutputStream fos = handler.openForWrite(dir, dest, true); JsonGenerator generator = createGenerator(fos)) {
+    try (OutputStream fos = handler.openForWrite(dir, dest, true, overwrite); JsonGenerator generator = createGenerator(fos)) {
       generator.writeStartArray();
       for (Attributes attr : attributes) {
         org.dcm4che3.json.JSONWriter writer = createWriter(generator);
@@ -59,19 +60,24 @@ public class JsonAccess {
         fos.write('\n');
       }
       generator.writeEnd();
+    } catch (FileAlreadyExistsException e) {
+      return;
     } catch (IOException e) {
       log.warn("Unable to write file {}", dest, e);
     }
     log.debug("Wrote to {} / {}", dir, dest);
   }
 
+  /** Writes a file to the given location */
   public static void writeSingle(FileHandler handler, String dir, String dest, Attributes data) {
-    try (OutputStream fos = handler.openForWrite(dir, dest, true); JsonGenerator generator = createGenerator(fos)) {
+    try (OutputStream fos = handler.openForWrite(dir, dest, true, false); JsonGenerator generator = createGenerator(fos)) {
       org.dcm4che3.json.JSONWriter writer = createWriter(generator);
       writer.write(data);
       log.debug("Wrote {} tags", data.size());
       generator.flush();
       fos.write('\n');
+    } catch (FileAlreadyExistsException e) {
+      return;
     } catch (IOException e) {
       log.warn("Unable to write file {}", dest, e);
     }
