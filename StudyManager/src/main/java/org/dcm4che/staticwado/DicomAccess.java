@@ -80,11 +80,7 @@ public class DicomAccess {
     /** Returns a hash of the attributes instances */
     public static String hashAttributes(Attributes... attrs) {
         try(HashOutputStream hos = new HashOutputStream()) {
-            for(Attributes attr : attrs) {
-                try (DicomOutputStream dos = new DicomOutputStream(hos, UID.ImplicitVRLittleEndian)) {
-                    dos.writeDataset(null, attr);
-                }
-            }
+            JsonAccess.write(hos,attrs);
             return hos.getHash();
         } catch(IOException e) {
             throw new Error(e);

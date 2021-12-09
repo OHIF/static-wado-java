@@ -10,7 +10,6 @@ configurations {
 
 dependencies {
     implementation 'org.apache.commons:commons-text'
-    implementation 'org.slf4j:slf4j-simple:1.7.32'
     // https://mvnrepository.com/artifact/commons-cli/commons-cli
     implementation 'commons-cli:commons-cli:1.4'
     implementation project(':StudyManager')
@@ -18,10 +17,13 @@ dependencies {
     jniMac 'org.weasis.thirdparty.org.opencv:libopencv_java:4.5.3-dcm:macosx-x86-64@jnilib'
     jniWindows 'org.weasis.thirdparty.org.opencv:opencv_java:4.5.3-dcm:windows-x86-64@dll'
     implementation 'org.dcm4che:dcm4che-core:5.24.1'
+    implementation 'org.dcm4che:dcm4che-imageio:5.24.1'
+    implementation 'org.dcm4che:dcm4che-net:5.24.1'
     implementation 'com.amazonaws:aws-java-sdk-s3:1.12.39'
 }
 
 application {
+    applicationName = "StaticWado"
     // Define the main class for the application.
     mainClass = 'org.dcm4che.staticwado.StaticWado'
 }
@@ -46,6 +48,16 @@ tasks.register('copyJniWindows', Copy) {
 
 tasks.compileJava.dependsOn(tasks.copyJniWindows, tasks.copyJniMac, tasks.copyJniLinux)
 
+task scpStartScripts(type: CreateStartScripts) {
+    outputDir = file("build/scripts") // By putting these scripts here, they will be picked up automatically by the installDist task
+    mainClass = "org.dcm4che.staticwado.StaticWadoScp"
+    applicationName = 'StaticWadoScp'
+    classpath = project.tasks.getAt(JavaPlugin.JAR_TASK_NAME).outputs.files.plus(project.configurations.getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME))
+}
+
+tasks.named("installDist") {
+    dependsOn(scpStartScripts)
+}
 
 distributions {
     main {

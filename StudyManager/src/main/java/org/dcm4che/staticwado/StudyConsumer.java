@@ -35,7 +35,7 @@ public class StudyConsumer implements BiConsumer<String, Attributes> {
     log.warn("Writing studies directory {} with {} instances", dicomWebDir, studies.size());
     JsonAccess.write(callbacks.fileHandler,
         dicomWebDir,
-        "studies",
+        "studies", true,
         studies.toArray(Attributes[]::new));
   }
 }
