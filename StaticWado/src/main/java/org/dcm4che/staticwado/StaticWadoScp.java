@@ -4,7 +4,9 @@ import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 
+import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -14,6 +16,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.VR;
+import org.dcm4che3.imageio.plugins.dcm.DicomImageReader;
+import org.dcm4che3.imageio.plugins.dcm.DicomMetaData;
+import org.dcm4che3.io.DicomInputStream;
 import org.dcm4che3.net.*;
 import org.dcm4che3.net.pdu.PresentationContext;
 import org.dcm4che3.net.service.BasicCEchoSCP;
@@ -22,6 +27,9 @@ import org.dcm4che3.net.service.DicomServiceException;
 import org.dcm4che3.net.service.DicomServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.imageio.ImageIO;
+import javax.imageio.stream.FileImageInputStream;
 
 public class StaticWadoScp {
   private static final Logger log = LoggerFactory.getLogger(StaticWadoScp.class);
@@ -51,22 +59,44 @@ public class StaticWadoScp {
   private final BasicCStoreSCP cstoreSCP = new BasicCStoreSCP("*") {
     private final Map<Association,StudyManager.StudyDataFactory> studyDataFactories = new HashMap<>();
 
+    public Attributes readDataset(PDVInputStream data, String tsuid, File tempDir) throws IOException {
+      try (DicomInputStream dis = new DicomInputStream(data, tsuid)) {
+        dis.setIncludeBulkData(DicomInputStream.IncludeBulkData.URI);
+        dis.setBulkDataDescriptor(DicomAccess::descriptor);
+        dis.setBulkDataDirectory(tempDir);
+        return dis.readDataset();
+      }
+    }
+
     @Override
     protected void store(Association as, PresentationContext pc,
                          Attributes rq, PDVInputStream data, Attributes rsp)
         throws IOException {
       StudyManager.StudyDataFactory factory = studyDataFactories.computeIfAbsent(as,key -> studyManager.createStudyDataFactory());
       String tsuid = pc.getTransferSyntax();
+      String sopUid = rq.getString(Tag.AffectedSOPInstanceUID);
+      if( sopUid.contains("..") || sopUid.contains(":") ) {
+        throw new IOException("SOP Instance UID "+sopUid+" contains illegal characters");
+      }
+      File tempDir = new File(studyManager.getDicomWebDir(),"temp/"+sopUid);
       try {
-        Attributes attr = data.readDataset(tsuid);
-        attr.setString(Tag.AvailableTransferSyntaxUID, VR.UI, tsuid);
+        tempDir.mkdirs();
+        Attributes attr = readDataset(data,tsuid, tempDir);
         SopId id = factory.createSopId(attr);
         if( id.getStudyData().alreadyExists(id) ) {
           rsp.setInt(Tag.Status,VR.US, Status.DuplicateSOPinstance);
           return;
         }
+        attr.setString(Tag.AvailableTransferSyntaxUID, VR.UI, tsuid);
         studyManager.studyStats.add("ReceiveInstance", 25, "Got SOP {} on association {}", attr.getString(Tag.SOPInstanceUID), as);
+        DicomImageReader reader = (DicomImageReader) ImageIO.getImageReadersByFormatName("DICOM").next();
+        Attributes fmi = new Attributes();
+        fmi.setString(Tag.TransferSyntaxUID,VR.UI, tsuid);
+        reader.setInput(new DicomMetaData(fmi,attr));
+        id.setDicomImageReader(reader);
         studyManager.importDicom(id,attr);
+        reader.close();
+        FileHandler.rmdir(tempDir);
       } catch (Exception e) {
         log.warn("Caught", e);
         throw new DicomServiceException(Status.ProcessingFailure, e);

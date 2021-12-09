@@ -135,11 +135,11 @@ public class ExtractImageFrames {
         String origUri = bulk.getURI();
         long origOffset = getOffset(origUri);
         String baseUri = origUri.contains("?") ? origUri.substring(0,origUri.indexOf('?')) : origUri;
-        String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/";
+        String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames";
 
         for(int i=1; i<= frames; i++) {
             bulk.setURI(baseUri + "?offset="+(origOffset+imageLen*i-imageLen)+"&length="+imageLen);
-            convertImageFormat(reader, dir, attr, frameName+i, i, bulk, false);
+            convertImageFormat(reader, dir, attr, frameName(frameName,i), i, bulk, false);
         }
 
         int midFrame = (frames+1)/2;
@@ -196,17 +196,25 @@ public class ExtractImageFrames {
             saveVideo(id,attr,fragments);
             return;
         }
-        String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames/";
+        String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames";
 
         boolean fragmented = fragments.size()!=frames+1;
         for(int i=1; i<=frames; i++) {
             Object bulk = fragments.get(i);
-            convertImageFormat(reader,dir, attr, frameName+i, i, bulk, fragmented);
+            convertImageFormat(reader,dir, attr, frameName(frameName,i), i, bulk, fragmented);
         }
 
         int midFrame = (frames+1)/2;
-        convertThumbnail(reader, dir, attr, frameName.replace("frames/", "thumbnail"), midFrame);
+        convertThumbnail(reader, dir, attr, frameName.replace("/frames", "/thumbnail"), midFrame);
 
+    }
+
+    /** Generate an alternate sub-directory name when frameNo exceeds 10000 .. frame(frameNo/10000)/frameNo
+     * to deal with file system limitations. */
+    public static String frameName(String dir, int i) {
+        return i<10000 ?
+            (dir + "/" + i)  :
+            (dir+(i/10000) + "/"+i);
     }
 
     /** Saves the raw, original DICOM object to the studies/.../SOP_Instance.gz file */
@@ -243,7 +251,7 @@ public class ExtractImageFrames {
 
     public void saveMultipart(String dir, String dest, Object value, String contentType, String separator, boolean gzip) {
         byte[] separatorBytes = separator.getBytes(StandardCharsets.UTF_8);
-        log.debug("Writing multipart {} content type {}", dest, contentType);
+        log.debug("Writing multipart {} content type {} value {}", dest, contentType, value);
         try(OutputStream os = callbacks.fileHandler.openForWrite(dir,dest,gzip, true)) {
             os.write(DASH_BYTES);
             os.write(separatorBytes);
@@ -389,8 +397,11 @@ public class ExtractImageFrames {
                     ImageTypeSpecifier specifier = getSpecifier(attr);
                     BufferedImage bi = new BufferedImage(specifier.getColorModel(),r,false,null);
                     try(ExtMemoryCacheImageOutputStream ios = new ExtMemoryCacheImageOutputStream(attr)) {
-                        compressor.setOutput(ios);
-                        compressor.write(null,new IIOImage(bi,null,null), compressParam);
+                        synchronized(compressor) {
+                            compressor.setOutput(ios);
+
+                            compressor.write(null, new IIOImage(bi, null, null), compressParam);
+                        }
                         writeData = ios.toByteArray();
                         writeType = CONTENT_TYPES.get(tsuid) + ";transfer-syntax="+tsuid;
                         attr.setString(Tag.AvailableTransferSyntaxUID,VR.UI, tsuid);
@@ -413,7 +424,7 @@ public class ExtractImageFrames {
                 e.printStackTrace();
             }
         } else {
-            callbacks.studyStats.add("Orig TS Image", 50, "Leaving {} as original type {} imageReader {} tsuid {}", sourceTsuid, writeType, reader, tsuid);
+            callbacks.studyStats.add("Orig TS Image", 1000, "Leaving {} as original type {} imageReader {} tsuid {}", sourceTsuid, writeType, reader, tsuid);
             gzip = UID.ImplicitVRLittleEndian.equals(tsuid) || UID.ExplicitVRLittleEndian.equals(tsuid);
         }
         log.debug("Original bulkdata source is {}", (bulk instanceof BulkData) ? ((BulkData) bulk).getURI() : bulk);
@@ -430,12 +441,14 @@ public class ExtractImageFrames {
                 ImageReadParam param = reader.getDefaultReadParam();
                 BufferedImage bi = reader.read(frame - 1, param);
                 try (ExtMemoryCacheImageOutputStream ios = new ExtMemoryCacheImageOutputStream(attr)) {
-                    jpegCompressor.setOutput(ios);
-                    jpegCompressor.write(null, new IIOImage(bi, null, null), null);
+                    synchronized(jpegCompressor) {
+                        jpegCompressor.setOutput(ios);
+                        jpegCompressor.write(null, new IIOImage(bi, null, null), null);
+                    }
                     byte[] writeData = ios.toByteArray();
                     saveSinglepart(dir,dest, writeData);
                     attr.setString(Tag.AvailableTransferSyntaxUID, VR.UI, tsuid);
-                    callbacks.studyStats.add("Thumbnail", 25,
+                    callbacks.studyStats.add("Thumbnail", 1000,
                         "Wrote thumbnail to {} as JPEG length {} type image/jpeg",dest, ((byte[]) writeData).length);
                 }
             } catch (IOException e) {

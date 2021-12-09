@@ -17,7 +17,7 @@ public class DeduplicateWriter implements BiConsumer<SopId, Attributes> {
         JsonAccess.write(callbacks.fileHandler,
             callbacks.getDeduplicatedInstancesDir(sopId.getStudyInstanceUid()),
             callbacks.getDeduplicatedName(hashValue), false, attributes);
-        callbacks.studyStats.add("WriteInstanceDeduplicate", 100,
+        callbacks.studyStats.add("WriteInstanceDeduplicate", 1000,
             "Write to {} single instance deduplicate for {}",
             hashValue, sopId.getStudyInstanceUid());
         StudyData studyData = sopId.getStudyData();

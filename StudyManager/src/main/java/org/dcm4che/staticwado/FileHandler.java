@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.math.BigInteger;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -34,27 +35,29 @@ public class FileHandler {
       gzip = true;
     }
     File fullName = new File(dir, name).getCanonicalFile();
-    File gzipName = new File(dir, name+".gz");
+    File gzipName = new File(dir, name + ".gz");
     fullName.getParentFile().mkdirs();
     File finalName = gzip ? gzipName : fullName;
     (gzip ? fullName : gzipName).delete();
-    if( !overwrite && finalName.canRead() ) {
-      throw new FileAlreadyExistsException("File "+finalName+" already exists");
+    if (!overwrite && finalName.canRead()) {
+      throw new FileAlreadyExistsException("File " + finalName + " already exists");
     }
-    File tempFile = new File(fullName.getParentFile(),"temp-"+Math.random());
-    OutputStream os = new FileOutputStream(tempFile);
-    if( gzip ) {
-      os = new GZIPOutputStream(os);
-    }
+    File tempFile = new File(fullName.getParentFile(), "temp-" + Math.random());
+    FileOutputStream fos = new FileOutputStream(tempFile);
+    OutputStream os = gzip ? new GZIPOutputStream(fos) : fos;
     return new FilterOutputStream(os) {
+      boolean closed = false;
+
       @Override
       public void close() throws IOException {
-        super.close();
-        if( overwrite ) finalName.delete();
-        if( !tempFile.renameTo(finalName) ) {
-          if( overwrite ) log.warn("Unable to replace {} with {}", finalName, tempFile);
-          tempFile.delete();
+        if (closed) {
+          return;
         }
+        super.close();
+        safeClose(os);
+        safeClose(fos);
+        closed = true;
+        renameTo(tempFile, finalName, overwrite);
       }
     };
   }
@@ -105,20 +108,60 @@ public class FileHandler {
 
   /**
    * List the file names for the given directory with an increasing age (newest first)
+   *
    * @param dir to find the list for
    * @return list of items
    */
   public List<String> listContentsIncreasingAge(String dir) {
     File dirFile = new File(dir);
     String[] items = dirFile.list();
-    if( items==null || items.length==0 ) return Collections.emptyList();
+    if (items == null || items.length == 0) return Collections.emptyList();
     var files = new ArrayList<>(Arrays.asList(items));
-    var ages = new HashMap<String,Long>();
-    files.forEach(name -> ages.put(name,new File(dir,name).lastModified()));
+    var ages = new HashMap<String, Long>();
+    files.forEach(name -> ages.put(name, new File(dir, name).lastModified()));
 
-    files.sort( (a,b) -> {
-      return (int) Math.signum(ages.get(a)-ages.get(b));
+    files.sort((a, b) -> {
+      return (int) Math.signum(ages.get(a) - ages.get(b));
     });
     return files;
   }
+
+  public static void rmdir(File tempDir) {
+    if (!tempDir.isDirectory()) {
+      tempDir.delete();
+    } else {
+      Arrays.stream(tempDir.listFiles()).forEach(FileHandler::rmdir);
+      tempDir.delete();
+    }
+  }
+
+  public static void safeClose(OutputStream os) {
+    try {
+      if (os != null) os.close();
+    } catch (IOException e) {
+      log.warn("Caught exception on close", e);
+    }
+  }
+
+  public static void renameTo(File src, File dest, boolean overwrite) {
+    if (overwrite && dest.exists()) {
+      try {
+        Files.delete(dest.toPath());
+      } catch (IOException e) {
+        log.error("Can't delete", e);
+      }
+    }
+    try {
+      Files.move(src.toPath(), dest.toPath());
+      return;
+    } catch (Exception e) {
+      if (!overwrite) {
+        src.delete();
+        return;
+      }
+      log.error("Can't move", e);
+    }
+    log.warn("Unable to replace {} with {}", dest, src);
+  }
+
 }

@@ -50,22 +50,28 @@ public class JsonAccess {
    */
   public static void write(FileHandler handler, String dir, String dest, boolean overwrite, Attributes... attributes) {
     log.debug("Writing {} instances to {}", attributes.length, dest);
-    try (OutputStream fos = handler.openForWrite(dir, dest, true, overwrite); JsonGenerator generator = createGenerator(fos)) {
-      generator.writeStartArray();
-      for (Attributes attr : attributes) {
-        org.dcm4che3.json.JSONWriter writer = createWriter(generator);
-        writer.write(attr);
-        log.debug("Wrote {} tags", attr.size());
-        generator.flush();
-        fos.write('\n');
-      }
-      generator.writeEnd();
+    try (OutputStream fos = handler.openForWrite(dir, dest, true, overwrite)) {
+      write(fos,attributes);
     } catch (FileAlreadyExistsException e) {
       return;
     } catch (IOException e) {
       log.warn("Unable to write file {}", dest, e);
     }
     log.debug("Wrote to {} / {}", dir, dest);
+  }
+
+  public static void write(OutputStream os, Attributes... attributes) throws IOException {
+    try (JsonGenerator generator = createGenerator(os)) {
+      generator.writeStartArray();
+      for (Attributes attr : attributes) {
+        org.dcm4che3.json.JSONWriter writer = createWriter(generator);
+        writer.write(attr);
+        log.debug("Wrote {} tags", attr.size());
+        generator.flush();
+        os.write('\n');
+      }
+      generator.writeEnd();
+    }
   }
 
   /** Writes a file to the given location */

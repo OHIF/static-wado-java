@@ -121,7 +121,7 @@ public class StudyManager {
       StudyData data = new StudyData(name, this);
       data.readDeduplicatedGroup();
       data.readDeduplicatedInstances();
-      if( data.isEmpty() ) return;
+      if (data.isEmpty()) return;
       studyHandler.completeStudy(data);
     });
     return files.size();
@@ -134,22 +134,21 @@ public class StudyManager {
   }
 
   public void importDicom(SopId id, Attributes attr) throws Exception {
+    Object pixelData = attr.getValue(Tag.PixelData);
+    if (pixelData instanceof BulkData) {
+      imageConsumer.saveUncompressed(id, attr, (BulkData) pixelData);
+    } else if (pixelData instanceof Fragments) {
+      imageConsumer.saveCompressed(id, attr, (Fragments) pixelData);
+    }
+
     attr.accept((retrievePath, tag, vr, value) -> {
+      if( tag==Tag.PixelData && retrievePath.getParent()==null ) return true;
       if (value instanceof BulkData) {
         BulkData bulk = (BulkData) value;
         log.debug("Moving bulkdata item {}", bulk.getURI());
-        if (tag == Tag.PixelData) {
-          imageConsumer.saveUncompressed(id, attr, bulk);
-        } else {
-          bulkConsumer.saveBulkdata(id, attr, tag, bulk);
-        }
+        bulkConsumer.saveBulkdata(id, attr, tag, bulk);
       } else if (value instanceof Fragments) {
-        Fragments fragments = (Fragments) value;
-        if (tag == Tag.PixelData) {
-          imageConsumer.saveCompressed(id, attr, fragments);
-        } else {
           throw new UnsupportedOperationException("Not implemented yet");
-        }
       }
       return true;
     }, true);
@@ -163,14 +162,14 @@ public class StudyManager {
       Attributes attr = DicomAccess.readFile(fileHandler, dir, name);
       if (attr == null) return;
       SopId id = factory.createSopId(attr);
-      if( id.getStudyData().alreadyExists(id) ) return;
+      if (id.getStudyData().alreadyExists(id)) return;
       // Steps here are to extract the bulkdata, pixel data and then send the attr to the instance consumer.
       DicomImageReader reader = (DicomImageReader) ImageIO.getImageReadersByFormatName("DICOM").next();
       studyStats.add("DICOMP10 Read", 250, "Read DICOM Part 10 file {}/{}", dir, name);
       try (FileImageInputStream fiis = new FileImageInputStream(file)) {
         reader.setInput(fiis);
         id.setDicomImageReader(reader);
-        importDicom(id,attr);
+        importDicom(id, attr);
       } catch (Exception e) {
         overallStats.add("Non DICOM P10", 1, "Unable to process {}", e);
       }
