@@ -49,4 +49,12 @@ public class SopId {
   public void setDicomImageReader(DicomImageReader reader) {
     this.reader = reader;
   }
+
+  public String toString() {
+    StringBuilder ret = new StringBuilder("studyInstanceUid=").append(studyInstanceUid);
+    if( seriesInstanceUid!=null ) ret.append("&seriesInstanceUid=").append(seriesInstanceUid);
+    if( sopInstanceUid!=null ) ret.append("&sopInstanceUid=").append(sopInstanceUid);
+    if( getStudyData()!=null ) ret.append(" #").append(getStudyData().size());
+    return ret.toString();
+  }
 }

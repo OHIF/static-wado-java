@@ -13,6 +13,9 @@ import javax.imageio.ImageIO;
 import javax.imageio.stream.FileImageInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.function.BiConsumer;
 
 /**
@@ -222,6 +225,25 @@ public class StudyManager {
 
   public StudyDataFactory createStudyDataFactory() {
     return new StudyDataFactory();
+  }
+
+  public List<Attributes> queryStudies(HashMap<String, String> query, BiConsumer<SopId,Attributes> consumer) throws IOException {
+    String studyUid = query.get("StudyInstanceUID");
+    List<Attributes> ret;
+    if( studyUid!=null ) {
+      ret = JsonAccess.read(fileHandler,getStudiesDir(studyUid),"studies.gz");
+    } else {
+      ret = JsonAccess.read(fileHandler,getDicomWebDir(),"studies.gz");
+    }
+    log.warn("There are {} results", ret.size());
+    for(var attr : ret) {
+      SopId id = new SopId(attr);
+      id.setStudyData(new StudyData(id,this));
+      id.getStudyData().readDeduplicatedGroup();
+      // No need to read single instances - this tool only operations on already grouped data.
+      consumer.accept(id,attr);
+    }
+    return ret;
   }
 
 

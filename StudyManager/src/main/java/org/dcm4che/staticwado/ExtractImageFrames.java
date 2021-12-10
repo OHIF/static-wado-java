@@ -5,6 +5,7 @@ import org.dcm4che3.image.PhotometricInterpretation;
 import org.dcm4che3.imageio.codec.ImageWriterFactory;
 import org.dcm4che3.imageio.plugins.dcm.DicomImageReader;
 import org.dcm4che3.io.DicomOutputStream;
+import org.dcm4che3.util.CountingOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -136,16 +137,17 @@ public class ExtractImageFrames {
         long origOffset = getOffset(origUri);
         String baseUri = origUri.contains("?") ? origUri.substring(0,origUri.indexOf('?')) : origUri;
         String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames";
-
+        BulkDataReader bulkdataReader = new BulkDataReader(callbacks.fileHandler, dir, frameName);
         for(int i=1; i<= frames; i++) {
             bulk.setURI(baseUri + "?offset="+(origOffset+imageLen*i-imageLen)+"&length="+imageLen);
-            convertImageFormat(reader, dir, attr, frameName(frameName,i), i, bulk, false);
+            BulkData convertBulk = convertImageFormat(reader, dir, attr, frameName(frameName,i), i, bulk, false);
+            bulkdataReader.add(convertBulk);
         }
 
         int midFrame = (frames+1)/2;
         convertThumbnail(reader, dir, attr, frameName.replace("frames/", "thumbnail"), midFrame);
 
-        bulk.setURI(origUri);
+        attr.setValue(Tag.PixelData,VR.OB, bulkdataReader);
     }
 
     public static boolean isVideo(Attributes attr) {
@@ -199,14 +201,15 @@ public class ExtractImageFrames {
         String frameName = "series/"+seriesUid + "/instances/"+ sopUid + "/frames";
 
         boolean fragmented = fragments.size()!=frames+1;
+        BulkDataReader bulkdataReader = new BulkDataReader(callbacks.fileHandler, dir,frameName);
         for(int i=1; i<=frames; i++) {
             Object bulk = fragments.get(i);
-            convertImageFormat(reader,dir, attr, frameName(frameName,i), i, bulk, fragmented);
+            bulkdataReader.add(convertImageFormat(reader,dir, attr, frameName(frameName,i), i, bulk, fragmented));
         }
 
         int midFrame = (frames+1)/2;
         convertThumbnail(reader, dir, attr, frameName.replace("/frames", "/thumbnail"), midFrame);
-
+        attr.setValue(Tag.PixelData,VR.OB, bulkdataReader);
     }
 
     /** Generate an alternate sub-directory name when frameNo exceeds 10000 .. frame(frameNo/10000)/frameNo
@@ -224,7 +227,7 @@ public class ExtractImageFrames {
         String seriesInstanceUID = attr.getString(Tag.SeriesInstanceUID);
         String sopInstanceUID = attr.getString(Tag.SOPInstanceUID);
         String dest = "series/"+seriesInstanceUID+"/instances/"+sopInstanceUID;
-        saveMultipart(callbacks.getStudiesDir(id), dest,original,"application/dicom", SEPARATOR, true);
+        saveMultipart(callbacks.getStudiesDir(id), dest,original,"application/dicom", SEPARATOR, true, null);
     }
 
     public static byte[] getBytes(Attributes attr) {
@@ -247,27 +250,49 @@ public class ExtractImageFrames {
 
     static final byte[] DASH_BYTES = "--".getBytes(StandardCharsets.UTF_8);
     static final byte[] NEWLINE_BYTES = "\r\n".getBytes(StandardCharsets.UTF_8);
-    static final byte[] CONTENT_TYPE_BYTES = "Content-Type: ".getBytes(StandardCharsets.UTF_8);
+    static final byte[] HEADER_SEPARATOR = " ".getBytes(StandardCharsets.UTF_8);
 
-    public void saveMultipart(String dir, String dest, Object value, String contentType, String separator, boolean gzip) {
+    public static long valueLength(Object value) {
+        if( value instanceof byte[] ) {
+            byte[] bValue = (byte[]) value;
+            return bValue.length;
+        }
+        if( value instanceof BulkData ) {
+            return ((BulkData) value).longLength();
+        }
+        throw new UnsupportedOperationException("Unknown type:" + value.getClass());
+    }
+
+    public BulkData saveMultipart(String dir, String dest, Object value, String contentType, String separator, boolean gzip, Map<String,String> headers) {
+        BulkData ret = new BulkData(dest,0,-1,false);
+        ret.setLength(valueLength(value));
         byte[] separatorBytes = separator.getBytes(StandardCharsets.UTF_8);
         log.debug("Writing multipart {} content type {} value {}", dest, contentType, value);
+        if( headers==null ) headers = new HashMap<>();
+        headers.put("content-type", contentType);
+        headers.put("content-length", Long.toString(ret.longLength()));
         try(OutputStream os = callbacks.fileHandler.openForWrite(dir,dest,gzip, true)) {
-            os.write(DASH_BYTES);
-            os.write(separatorBytes);
-            os.write(NEWLINE_BYTES);
-            os.write(CONTENT_TYPE_BYTES);
-            os.write(contentType.getBytes(StandardCharsets.UTF_8));
-            os.write(NEWLINE_BYTES);
-            os.write(NEWLINE_BYTES);
+            CountingOutputStream cos = new CountingOutputStream(os);
+            cos.write(DASH_BYTES);
+            cos.write(separatorBytes);
+            cos.write(NEWLINE_BYTES);
+            for(String hdr : headers.keySet()) {
+                cos.write(hdr.getBytes(StandardCharsets.UTF_8));
+                cos.write(HEADER_SEPARATOR);
+                cos.write(headers.get(hdr).getBytes(StandardCharsets.UTF_8));
+                cos.write(NEWLINE_BYTES);
+            }
+            cos.write(NEWLINE_BYTES);
+            ret.setOffset(cos.getCount());
             copyFrom(value,os);
             os.write(NEWLINE_BYTES);
             os.write(DASH_BYTES);
             os.write(separatorBytes);
             os.write(DASH_BYTES);
         } catch(IOException e) {
-            e.printStackTrace();
+            log.warn("Unable to write", e);
         }
+        return ret;
     }
 
     /** Saves an object as singlepart to the thumbnail or rendered directory  */
@@ -337,10 +362,8 @@ public class ExtractImageFrames {
         String uri = bulk.getURI();
         String hash = callbacks.fileHandler.hashOf(bulk.getFile(), getOffset(uri), getLength(uri));
         String bulkName = callbacks.getBulkdataName(hash);
-        saveMultipart(callbacks.getStudiesDir(id),bulkName,bulk,OCTET_STREAM, SEPARATOR, true);
-        String finalUri = id.getSeriesInstanceUid() + "/" + bulkName;
-        log.debug("Final uri = {} was {}", finalUri, bulk.getURI());
-        bulk.setURI(finalUri);
+        BulkData updatedBulk = saveMultipart(callbacks.getStudiesDir(id),bulkName,bulk,OCTET_STREAM, SEPARATOR, true, null);
+        attr.setValue(tag,attr.getVR(tag), updatedBulk);
     }
 
     public ImageTypeSpecifier getSpecifier(Attributes ds) {
@@ -378,9 +401,10 @@ public class ExtractImageFrames {
      * It then writes it out to the given destination file in the specified format.  Formats can be multipart
      * encapsulated or raw.
      */
-    public void convertImageFormat(DicomImageReader reader, String dir, Attributes attr, String dest, int frame, Object bulk, boolean fragmented) {
+    public BulkData convertImageFormat(DicomImageReader reader, String dir, Attributes attr, String dest, int frame, Object bulk, boolean fragmented) {
         Object writeData = bulk;
         String sourceTsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
+        log.warn("sourceTsuid = {}", sourceTsuid);
         String writeType = CONTENT_TYPES.get(sourceTsuid);
         boolean gzip = false;
         if( writeType==null ) {
@@ -428,8 +452,9 @@ public class ExtractImageFrames {
             gzip = UID.ImplicitVRLittleEndian.equals(tsuid) || UID.ExplicitVRLittleEndian.equals(tsuid);
         }
         log.debug("Original bulkdata source is {}", (bulk instanceof BulkData) ? ((BulkData) bulk).getURI() : bulk);
-        saveMultipart(dir,dest, writeData, writeType, SEPARATOR, gzip);
+        BulkData writeBulk = saveMultipart(dir,dest, writeData, writeType, SEPARATOR, gzip, null);
         saveSinglepart(dir, dest, writeData, writeType);
+        return writeBulk;
     }
 
     /**
@@ -447,7 +472,6 @@ public class ExtractImageFrames {
                     }
                     byte[] writeData = ios.toByteArray();
                     saveSinglepart(dir,dest, writeData);
-                    attr.setString(Tag.AvailableTransferSyntaxUID, VR.UI, tsuid);
                     callbacks.studyStats.add("Thumbnail", 1000,
                         "Wrote thumbnail to {} as JPEG length {} type image/jpeg",dest, ((byte[]) writeData).length);
                 }

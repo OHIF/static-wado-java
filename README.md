@@ -51,7 +51,18 @@ gradlew installDist
 will build and install the program in
 StaticWado/build/install/StaticWado
 with the command line tools in the bin directory.  The remaining examples
-assume that the bin directory is in the path.  
+assume that the bin directory is in the path.
+
+## Environment Variables
+There are a few environment variables to be set in order to find the libaries.
+There are different versions of these, one for Linux, one for Windows and one for
+the non-Arm Mac.  All three properties should have the same value, but the
+examples below show Windows, Linux and Mac respectively.
+```properties
+STATIC_WADO_OPTS=-Djava.library.path=c:\bin\StaticWado\Windows-x86-64
+STATIC_WADO_SCP_OPTS=-Djava.library.path=/usr/lib/StaticWado/Linux-64
+STATIC_WADO_OUT_OPTS=-Djava.library.path=/usr/lib/StaticWado/Mac
+```
 
 ## Converting a set of files and serving them locally
 Add build/install/StaticWado/bin to your path.
@@ -70,6 +81,20 @@ npx http-server -p 5000 --cors -g
 There is also a custom web server supporting STOW and serving the right content
 types being developed.
 
+## Serving up DIMSE endpoints from DICOMweb data
+Assuming you have some data in your default ~/dicomweb directory, you can serve
+DICOM DIMSE endpoints via:
+```bash
+StaticWadoScp
+```
+
+## Converting back to DICOM Part 10
+The command below outputs the study 1.2.3 into the ./1.2.3/ directory as DICOM part 10.
+
+```bash
+StaticWadoOut -o . 1.2.3
+```
+
 ## Accessing your local filesystem in OHIF
 Use the pre-configured local_static.js file, and then run:
 
@@ -86,11 +111,11 @@ TODO - being worked on
 * Add AWS setup guide
 * Support Google Cloud and Azure
 * Write a simple server for local use
-* Write a DICOM endpoint
 * Add storage of study data indices to FHIR or ...
 * Support creation of QC DICOM operations, and apply them locally
 * Support patient/study data updates
 * Support HL7 updates
+* Add study/patient indices in document DB of some sort
 
 # Serverless Function Design
 The idea for the serverless design is to have three lambda functions which
