@@ -55,8 +55,16 @@ task scpStartScripts(type: CreateStartScripts) {
     classpath = project.tasks.getAt(JavaPlugin.JAR_TASK_NAME).outputs.files.plus(project.configurations.getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME))
 }
 
+task outStartScripts(type: CreateStartScripts) {
+    outputDir = file("build/scripts") // By putting these scripts here, they will be picked up automatically by the installDist task
+    mainClass = "org.dcm4che.staticwado.StaticWadoOut"
+    applicationName = 'StaticWadoOut'
+    classpath = project.tasks.getAt(JavaPlugin.JAR_TASK_NAME).outputs.files.plus(project.configurations.getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME))
+}
+
 tasks.named("installDist") {
     dependsOn(scpStartScripts)
+    dependsOn(outStartScripts)
 }
 
 distributions {

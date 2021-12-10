@@ -1,14 +1,18 @@
 package org.dcm4che.staticwado;
 
-import org.dcm4che3.data.Attributes;
-import org.dcm4che3.data.Tag;
-import org.dcm4che3.data.VR;
+import org.dcm4che3.data.*;
+import org.dcm4che3.io.DicomOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Attr;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -56,7 +60,9 @@ public class StudyData {
 
     public String addDeduplicated(Attributes instance) {
         var hashValue = getHash(instance);
-        sopInstanceMap.getOrDefault(instance.getString(Tag.SOPInstanceUID), "imported");
+        var sopUid = instance.getString(Tag.SOPInstanceUID);
+        log.debug("Adding deduplicated instance {} sop {}", hashValue, sopUid);
+        sopInstanceMap.computeIfAbsent(instance.getString(Tag.SOPInstanceUID), key -> hashValue);
         var current = deduplicated.putIfAbsent(hashValue, instance);
         if( current==null ) {
             readHashes.put(hashValue, callbacks.getDeduplicatedName(hashValue));
@@ -105,6 +111,21 @@ public class StudyData {
     /** If the sop UID already exists, then return true */
     public boolean alreadyExists(SopId id) {
         return sopInstanceMap.containsKey(id.getSopInstanceUid());
+    }
+
+    public int size() {
+        if( sopInstanceMap.size()!=deduplicated.size() ) {
+            log.warn("sop instance size {} deduplicated size {}", sopInstanceMap.size(), deduplicated.size());
+        }
+        return sopInstanceMap.size();
+    }
+
+    public void forEachInstance(BiConsumer<String,String> consumer) {
+        sopInstanceMap.forEach((sopUid, hash) -> {
+            var deduplicateInstance = deduplicated.get(hash);
+            var seriesUid = deduplicateInstance.getString(Tag.SeriesInstanceUID);
+            consumer.accept(seriesUid, sopUid);
+        });
     }
 
     static class SeriesRecord {
@@ -173,6 +194,7 @@ public class StudyData {
      * @return Attributes which is a full metadata instance object.
      */
     public Attributes toMetadata(Attributes deduplicated) {
+        if( deduplicated==null ) return null;
         var refs = deduplicated.getStrings(DicomAccess.DEDUPPED_CREATER,DicomAccess.DEDUPPED_REF, VR.CS);
         Attributes ret = new Attributes();
         ret.addAll(deduplicated);
@@ -188,6 +210,16 @@ public class StudyData {
             }
         }
         return ret;
+    }
+
+    public Attributes getMetadata(String key) {
+        var deduplicatedInstance = deduplicated.get(key);
+        if( deduplicatedInstance==null ) {
+            var hashValue = sopInstanceMap.get(key);
+            if( hashValue==null ) return null;
+            deduplicatedInstance = deduplicated.get(hashValue);
+        }
+        return toMetadata(deduplicatedInstance);
     }
 
     public Attributes getOrLoadExtract(String hashValue) {
@@ -211,6 +243,7 @@ public class StudyData {
 
     public void readDeduplicatedDir(String dir) {
         List<String> files = callbacks.fileHandler.listContentsIncreasingAge(dir);
+        log.warn("Reading {} deduplicated files", files.size());
         files.forEach(file -> {
            if( !file.endsWith(".gz") ) return;
            String hashValue = file.substring(0,file.length()-3);
@@ -235,6 +268,62 @@ public class StudyData {
                log.warn("Failed to read {}/{} because {}", dir,file,e);
            }
         });
+    }
+
+    /**
+     * Writes the DIMSE format for the given sop instance to the stream.
+     * Includes the fmi is the includeFmi is set.
+     * @param key - either a hash or a sop insntance uid.
+     * @param os
+     * @throws IOException
+     * @throws FileNotFoundException when the key isn't found
+     */
+    public void writeDimse(String key, OutputStream os, boolean includeFmi) throws IOException {
+        Attributes attr = getMetadata(key);
+        if( attr==null ) {
+            throw new FileNotFoundException("SOP Instance "+key+" wasn't found");
+        }
+        var studyUid = attr.getString(Tag.StudyInstanceUID);
+        var tsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
+        var isCompressed = tsuid!=null && !(
+            tsuid.equals(UID.ExplicitVRLittleEndian) ||
+            tsuid.equals(UID.ImplicitVRLittleEndian) ||
+            tsuid.equals(UID.DeflatedExplicitVRLittleEndian));
+        Attributes fmi = null;
+        if( includeFmi ) {
+            fmi = new Attributes();
+            fmi.setString(Tag.TransferSyntaxUID,VR.UI, tsuid);
+            tsuid = UID.ExplicitVRLittleEndian;
+        }
+        try (DicomOutputStream dos = new DicomOutputStream(os,tsuid)){
+            attr.accept((attrs, tag, vr, value) -> {
+                var bulkValue = fixBulkDataUri(studyUid, value);
+                if( tag==Tag.PixelData && isCompressed && bulkValue!=null ) {
+                    var frames = attrs.getInt(Tag.NumberOfFrames,1);
+                    var frags = attrs.newFragments(Tag.PixelData, vr,frames+1);
+                    bulkValue.toPixelFragments(frames,frags);
+                    attrs.setValue(Tag.PixelData,vr,frags);
+                    return true;
+                }
+                if (bulkValue != null) attrs.setValue(tag, vr, bulkValue);
+                return true;
+            }, true);
+            dos.writeDataset(fmi,attr);
+        } catch(RuntimeException e) {
+            throw e;
+        } catch(Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public BulkDataReader fixBulkDataUri(String studyUid, Object value) throws IOException {
+        if( value instanceof BulkData ) {
+            BulkData bulk = (BulkData) value;
+            var bulkReader = (bulk instanceof BulkDataReader) ? ((BulkDataReader) bulk) :
+                new BulkDataReader(callbacks.fileHandler, callbacks.getStudiesDir(studyUid), bulk);
+            return bulkReader;
+        }
+        return null;
     }
 
     public void readDeduplicatedInstances() {

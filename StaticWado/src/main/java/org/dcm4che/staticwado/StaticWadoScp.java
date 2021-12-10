@@ -6,7 +6,6 @@ import org.apache.commons.cli.Options;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -15,21 +14,18 @@ import java.util.concurrent.ScheduledExecutorService;
 
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.data.Attributes;
+import org.dcm4che3.data.UID;
 import org.dcm4che3.data.VR;
 import org.dcm4che3.imageio.plugins.dcm.DicomImageReader;
 import org.dcm4che3.imageio.plugins.dcm.DicomMetaData;
 import org.dcm4che3.io.DicomInputStream;
 import org.dcm4che3.net.*;
 import org.dcm4che3.net.pdu.PresentationContext;
-import org.dcm4che3.net.service.BasicCEchoSCP;
-import org.dcm4che3.net.service.BasicCStoreSCP;
-import org.dcm4che3.net.service.DicomServiceException;
-import org.dcm4che3.net.service.DicomServiceRegistry;
+import org.dcm4che3.net.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.imageio.ImageIO;
-import javax.imageio.stream.FileImageInputStream;
 
 public class StaticWadoScp {
   private static final Logger log = LoggerFactory.getLogger(StaticWadoScp.class);
@@ -55,6 +51,19 @@ public class StaticWadoScp {
   private final Device device = new Device("StaticWadoSCP");
   private final ApplicationEntity ae = new ApplicationEntity("*");
   private final Connection conn = new Connection();
+
+  private final BasicCFindSCP cfindSCP = new BasicCFindSCP(UID.StudyRootQueryRetrieveInformationModelFind,
+      UID.PatientRootQueryRetrieveInformationModelFind) {
+
+  };
+
+  private final BasicCGetSCP cgetSCP = new BasicCGetSCP(UID.StudyRootQueryRetrieveInformationModelGet) {
+
+  };
+
+  private final BasicCMoveSCP cmoveSCP = new BasicCMoveSCP(UID.StudyRootQueryRetrieveInformationModelMove) {
+
+  };
 
   private final BasicCStoreSCP cstoreSCP = new BasicCStoreSCP("*") {
     private final Map<Association,StudyManager.StudyDataFactory> studyDataFactories = new HashMap<>();
