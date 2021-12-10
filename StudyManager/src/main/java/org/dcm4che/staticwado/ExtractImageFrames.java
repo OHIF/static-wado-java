@@ -404,6 +404,7 @@ public class ExtractImageFrames {
     public BulkData convertImageFormat(DicomImageReader reader, String dir, Attributes attr, String dest, int frame, Object bulk, boolean fragmented) {
         Object writeData = bulk;
         String sourceTsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
+        log.warn("sourceTsuid = {}", sourceTsuid);
         String writeType = CONTENT_TYPES.get(sourceTsuid);
         boolean gzip = false;
         if( writeType==null ) {
