@@ -49,7 +49,6 @@ public class InstanceDeduplicate implements BiConsumer<SopId,Attributes> {
                 "series/"+id.getSeriesInstanceUid() + "/instances/"+id.getSopInstanceUid(), false,
                 srcAttr);
         }
-        log.warn("source for deduplicate available tsuid {}", srcAttr.getString(Tag.AvailableTransferSyntaxUID));
         Attributes dedupped = new Attributes(srcAttr);
         for(TagLists selector : deduplicateSelectors) {
             Attributes testAttr = selector.select(srcAttr);
@@ -63,7 +62,6 @@ public class InstanceDeduplicate implements BiConsumer<SopId,Attributes> {
         dedupped.setString(DEDUPPED_CREATER,DEDUPPED_TYPE,VR.CS, INSTANCE_TYPE);
         dedupped.setString(Tag.SeriesInstanceUID,VR.UI, id.getSeriesInstanceUid());
         dedupped.setString(Tag.SOPInstanceUID,VR.UI,id.getSopInstanceUid());
-        log.warn("destination for deduplicate available tsuid {}", dedupped.getString(Tag.AvailableTransferSyntaxUID));
         callbacks.deduplicatedConsumer.accept(id,dedupped);
     }
 

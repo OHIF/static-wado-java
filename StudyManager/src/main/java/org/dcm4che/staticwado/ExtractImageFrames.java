@@ -215,9 +215,8 @@ public class ExtractImageFrames {
     /** Generate an alternate sub-directory name when frameNo exceeds 10000 .. frame(frameNo/10000)/frameNo
      * to deal with file system limitations. */
     public static String frameName(String dir, int i) {
-        return i<10000 ?
-            (dir + "/" + i)  :
-            (dir+(i/10000) + "/"+i);
+        // TODO - consider using additional sub-frames - alternatively, consider using single files with offsets
+        return dir + "/" + i;
     }
 
     /** Saves the raw, original DICOM object to the studies/.../SOP_Instance.gz file */
@@ -404,7 +403,6 @@ public class ExtractImageFrames {
     public BulkData convertImageFormat(DicomImageReader reader, String dir, Attributes attr, String dest, int frame, Object bulk, boolean fragmented) {
         Object writeData = bulk;
         String sourceTsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
-        log.warn("sourceTsuid = {}", sourceTsuid);
         String writeType = CONTENT_TYPES.get(sourceTsuid);
         boolean gzip = false;
         if( writeType==null ) {
@@ -414,7 +412,7 @@ public class ExtractImageFrames {
         }
         String simpleTsuid = getSimpleTsuid(sourceTsuid);
         if( reader!=null && (tsuid!=null && recompress.contains(simpleTsuid) || fragmented) ) {
-            log.warn("Converting image from {}({}) to {}", sourceTsuid, simpleTsuid, tsuid);
+            log.debug("Converting image from {}({}) to {}", sourceTsuid, simpleTsuid, tsuid);
             try {
                 WritableRaster r = (WritableRaster) reader.readRaster(frame-1, null);
                 if( compressor!=null ) {
