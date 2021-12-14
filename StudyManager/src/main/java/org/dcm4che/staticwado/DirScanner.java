@@ -28,7 +28,7 @@ public class DirScanner {
         for(String root : roots) {
             File file = dir==null ? new File(root) : new File(dir,root);
             if( file.isDirectory() ) {
-                scan(root, fileConsumer, file.list());
+                scan(file.getAbsolutePath(), fileConsumer, file.list());
             } else {
                 fileConsumer.accept(file.getParent(), file.getName());
                 ret++;

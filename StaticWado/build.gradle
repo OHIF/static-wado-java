@@ -10,15 +10,15 @@ configurations {
 
 dependencies {
     implementation 'org.apache.commons:commons-text'
-    // https://mvnrepository.com/artifact/commons-cli/commons-cli
     implementation 'commons-cli:commons-cli:1.4'
     implementation project(':StudyManager')
+    implementation 'org.slf4j:slf4j-simple:1.7.32'
     jniLinux 'org.weasis.thirdparty.org.opencv:libopencv_java:4.5.3-dcm:linux-x86-64@so'
     jniMac 'org.weasis.thirdparty.org.opencv:libopencv_java:4.5.3-dcm:macosx-x86-64@jnilib'
     jniWindows 'org.weasis.thirdparty.org.opencv:opencv_java:4.5.3-dcm:windows-x86-64@dll'
-    implementation 'org.dcm4che:dcm4che-core:5.24.1'
-    implementation 'org.dcm4che:dcm4che-imageio:5.24.1'
-    implementation 'org.dcm4che:dcm4che-net:5.24.1'
+    implementation 'org.dcm4che:dcm4che-core:5.25.0'
+    implementation 'org.dcm4che:dcm4che-imageio:5.25.0'
+    implementation 'org.dcm4che:dcm4che-net:5.25.0'
     implementation 'com.amazonaws:aws-java-sdk-s3:1.12.39'
 }
 

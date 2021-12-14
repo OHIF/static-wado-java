@@ -69,6 +69,7 @@ public class ExtractImageFrames {
         CONTENT_TYPES.put(UID.JPEG2000Lossless, IMAGE_JP2);
         CONTENT_TYPES.put(UID.JPEG2000, IMAGE_JP2);
         CONTENT_TYPES.put(UID.MPEG2MPML, VIDEO_MPEG2);
+        CONTENT_TYPES.put(UID.MPEG2MPHL, VIDEO_MPEG2);
         CONTENT_TYPES.put(UID.MPEG4HP41, VIDEO_H264);
         CONTENT_TYPES.put(UID.MPEG4HP41BD, VIDEO_H264);
         CONTENT_TYPES.put(UID.MPEG4HP422D, VIDEO_H264);
@@ -145,7 +146,7 @@ public class ExtractImageFrames {
         }
 
         int midFrame = (frames+1)/2;
-        convertThumbnail(reader, dir, attr, frameName.replace("frames/", "thumbnail"), midFrame);
+        convertThumbnail(reader, dir, attr, frameName.replace("/frames", "thumbnail"), midFrame);
 
         attr.setValue(Tag.PixelData,VR.OB, bulkdataReader);
     }

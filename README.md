@@ -1,14 +1,15 @@
 # static-wado
 The canonical location of this is now [OHIF static-wado](https://github.com/OHIF/static-wado.git)
 
-A command line tool to generate static WADO metadata and bulkdata files.  
-The input for the tool is the locations of DICOM files.
-The output is a DICOMweb static directory structure.
-There are three types of operations which can be performed, and all three can be
-done at once.  The first, converting single DICOM instances into bulkdata/pixeldata
-and deduplicated metadata.  The second groups the deduplicated metadata into sets
-that identify the information for the study.  The third actually writes out the
-study level metadata/query in the standard DICOMweb format.
+A command line tool to generate static WADO metadata and bulkdata files.
+ The input for the tool is the locations of DICOM files. The output
+is a DICOMweb static directory structure. There are three types of
+operations which can be performed, and all three can be done at once.
+The first, converting single DICOM instances into bulkdata/pixeldata and
+deduplicated metadata.  The second groups the deduplicated metadata into
+sets that identify the information for the study.  The third actually
+writes out the study level metadata/query in the standard DICOMweb
+format.
 
 When run all together, these changes create a static structure that can be 
 served as a DICOMweb service.  The fact that these are each independent stages 

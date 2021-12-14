@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.function.BiConsumer;
+import org.dcm4che3.imageio.stream.RAFFileImageInputStream;
 
 /**
  * The callbacks used for generating DICOM data - setup with a default set that is appropriate for basic
@@ -159,8 +160,8 @@ public class StudyManager {
   }
 
   public void importDicom(String dir, String name, StudyDataFactory factory) {
-    File file = new File(new File(dir), name);
-
+    File file = new File(dir, name);
+    log.warn("Import dicom dir {} name {}", dir, name);
     try {
       Attributes attr = DicomAccess.readFile(fileHandler, dir, name);
       if (attr == null) return;
@@ -169,7 +170,7 @@ public class StudyManager {
       // Steps here are to extract the bulkdata, pixel data and then send the attr to the instance consumer.
       DicomImageReader reader = (DicomImageReader) ImageIO.getImageReadersByFormatName("DICOM").next();
       studyStats.add("DICOMP10 Read", 250, "Read DICOM Part 10 file {}/{}", dir, name);
-      try (FileImageInputStream fiis = new FileImageInputStream(file)) {
+      try (FileImageInputStream fiis = new RAFFileImageInputStream(file)) {
         reader.setInput(fiis);
         id.setDicomImageReader(reader);
         importDicom(id, attr);
@@ -179,7 +180,7 @@ public class StudyManager {
     } catch (DicomStreamException dse) {
       log.debug("Skipping non-dicom {}", file);
     } catch (IOException e) {
-      log.warn("Caught exception: {}", e.toString());
+      log.warn("Caught exception:", e);
     }
   }
 

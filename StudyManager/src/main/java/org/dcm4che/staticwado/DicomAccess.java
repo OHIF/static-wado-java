@@ -52,7 +52,7 @@ public class DicomAccess {
 
     public static Attributes readFile(FileHandler fileHandler, String dir, String name) throws IOException {
         // TODO - use fileHandler.read and make the BulkData values reference the read stream URL
-        try(DicomInputStream dis = new DicomInputStream(new File(new File(dir),name))) {
+        try(DicomInputStream dis = new DicomInputStream(new File(dir,name))) {
             dis.setIncludeBulkData(DicomInputStream.IncludeBulkData.URI);
             dis.setBulkDataDescriptor(DicomAccess::descriptor);
             Attributes fmi = dis.readFileMetaInformation();
