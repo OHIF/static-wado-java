@@ -6,7 +6,7 @@ exist for different deployment setups, as configured by the ~/dicomweb.json depl
 2. DocumentDB database for patient and study searches
 3. S3 bucket for deduplicated data (this is optional, it may also be a local file, defaulting to ~/dicomweb/deduplicated/)
 4. S3 bucket for single-instance data, defaulting to local file directory ~/dicomweb/instances/
-5. Web service for DICOMweb queries and retrieves, defaulting to ...
+5. API Gateway configuration to access the lambda and s3 buckets
 6. Permissions and authentication to access files
 7. S3 bucket, forming an input queue of files to be processed by static-wado
 8. A set of lambda services to provide the STOW services

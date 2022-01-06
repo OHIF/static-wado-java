@@ -1,14 +1,19 @@
 {
   "name": "mkdicomwebs3",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "bin": {
     "mkdicomwebs3": "bin/mkdicomwebs3.js"
   },
+  "author": "Bill Wallace <bill.wallace@radicalimaging.com>",
+  "license": "MIT",
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "deploy": "cdk deploy",
+    "destroy": "cdk destroy",
+    "synth": "cdk synth"
   },
   "devDependencies": {
     "@types/jest": "^26.0.10",
