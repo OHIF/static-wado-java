@@ -269,8 +269,8 @@ public class ExtractImageFrames {
         byte[] separatorBytes = separator.getBytes(StandardCharsets.UTF_8);
         log.debug("Writing multipart {} content type {} value {}", dest, contentType, value);
         if( headers==null ) headers = new HashMap<>();
-        headers.put("content-type", contentType);
-        headers.put("content-length", Long.toString(ret.longLength()));
+        headers.put("Content-Type", contentType);
+        headers.put("Content-Length", Long.toString(ret.longLength()));
         try(OutputStream os = callbacks.fileHandler.openForWrite(dir,dest,gzip, true)) {
             CountingOutputStream cos = new CountingOutputStream(os);
             cos.write(DASH_BYTES);
@@ -278,6 +278,7 @@ public class ExtractImageFrames {
             cos.write(NEWLINE_BYTES);
             for(String hdr : headers.keySet()) {
                 cos.write(hdr.getBytes(StandardCharsets.UTF_8));
+                cos.write(':');
                 cos.write(HEADER_SEPARATOR);
                 cos.write(headers.get(hdr).getBytes(StandardCharsets.UTF_8));
                 cos.write(NEWLINE_BYTES);

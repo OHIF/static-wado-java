@@ -26,9 +26,11 @@ public class StudyConsumer implements BiConsumer<String, Attributes> {
     List<Attributes> studies;
     String dicomWebDir = callbacks.getDicomWebDir();
     try {
+      log.debug("Adding study {}", studyQuery);
       studies = JsonAccess.read(callbacks.fileHandler,dicomWebDir, "studies.gz")
-          .stream().map(item -> studyUid.equals(item.getString(Tag.StudyInstanceUID)) ? studyQuery : item)
+          .stream().filter(item -> !studyUid.equals(item.getString(Tag.StudyInstanceUID)))
           .collect(Collectors.toList());
+      studies.add(studyQuery);
     } catch (IOException e) {
       studies = new ArrayList<>();
       studies.add(studyQuery);
