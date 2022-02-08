@@ -32,25 +32,15 @@ public class StaticWado {
         opts.addOption(Option.builder( StudyManager.DEDUPLICATE_GROUP)
             .desc("Group single instance deduplicate data into group files")
             .build());
-        opts.addOption(Option.builder( StudyManager.STUDY_METADATA)
-            .desc("Generate study metadata")
-            .build());
+        opts.addOption(new Option("s", StudyManager.STUDY_METADATA, false, "Generate study metadata"));
         opts.addOption(Option.builder( StudyManager.INSTANCE_ONLY)
             .desc("Only generate instance level metadata/bulkdata")
             .build());
-        opts.addOption(Option.builder("contentType")
-            .hasArg()
-            .desc("Sets the transfer syntax appropriately for one of: jll,jls,jpeg,j2k,orig.  Will not recompress.  Default is jls.")
-            .build());
-        opts.addOption(Option.builder("recompress")
-            .hasArg()
-            .desc("Recompress already compressed files of the specified types (defaults to j2k,lei but can include jls, jll, jpeg)")
-            .build());
-        opts.addOption(Option.builder("tsuid")
-            .hasArg()
-            .desc("Sets the transfer syntax directly")
-            .build());
-        opts.addOption(Option.builder("h").desc("Show help").build());
+        opts.addOption(new Option("u","update", false, "Update study (don't re-use existing data)"));
+        opts.addOption(new Option("t","destinationType", true,
+        "Sets the transfer syntax appropriately for one of: jll,jls,jpeg,j2k,orig.  Will not recompress.  Default is jls."));
+        opts.addOption(new Option("r", "recompress", true, "Recompress already compressed files of the specified types (defaults to j2k,lei but can include jls, jll, jpeg)"));
+        opts.addOption(new Option("h", "help",false,"Show help"));
     }
 
     private static CommandLine parseCommandLine(String[] args)
@@ -74,11 +64,22 @@ public class StaticWado {
         return cl;
     }
 
+    public static String getTsuid(String name) {
+        if( "lei".equalsIgnoreCase(name) ) return UID.ImplicitVRLittleEndian;
+        if( "jls".equalsIgnoreCase(name) ) return UID.JPEGLSLossless;
+        if( "jll".equalsIgnoreCase(name) ) return UID.JPEGLosslessSV1;
+        if( "j2k".equalsIgnoreCase(name) ) return UID.JPEG2000Lossless;
+        if( "lee".equalsIgnoreCase(name) ) return UID.ExplicitVRLittleEndian;
+        if( "false".equalsIgnoreCase(name) ) return null;
+        return UID.JPEGLSLossless;
+    }
+
     public static StudyManager createStudyManager(CommandLine cl) {
         boolean deduplicate = cl.hasOption(StudyManager.DEDUPLICATE);
         boolean deduplicateGroup = cl.hasOption(StudyManager.DEDUPLICATE_GROUP);
         boolean studyMetadata = cl.hasOption(StudyManager.STUDY_METADATA);
         boolean instanceOnly = cl.hasOption(StudyManager.INSTANCE_ONLY);
+        boolean update = cl.hasOption("u");
         boolean completeStudy = !(instanceOnly || studyMetadata || deduplicateGroup || deduplicate);
 
         StudyManager manager = new StudyManager();
@@ -89,6 +90,11 @@ public class StaticWado {
         manager.setStudyMetadata(studyMetadata);
         manager.setDeduplicateGroup(deduplicateGroup);
         manager.setDicomWebDir(cl.getOptionValue('d'));
+        manager.setUpdate(update);
+        String typeName = getTsuid(cl.getOptionValue('t'));
+        manager.setDestinationTsuid(typeName);
+        String recompress = cl.getOptionValue('r');
+        if( recompress!=null ) manager.setRecompress(recompress);
 
         return manager;
     }

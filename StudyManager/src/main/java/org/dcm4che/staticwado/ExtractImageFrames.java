@@ -88,10 +88,16 @@ public class ExtractImageFrames {
     public ExtractImageFrames(StudyManager callbacks) {
         this.callbacks = callbacks;
         jpegCompressor = ImageIO.getImageWritersByFormatName("jpeg").next();
-        setTransferSyntaxUid(callbacks.getDestinationTsuid());
     }
 
-    public void setTransferSyntaxUid(String tsuid) {
+    /** Sets the transfer syntax UID and recompress from the callbacks */
+    public void setTransferSyntaxUid() {
+        String tsuid = callbacks.getDestinationTsuid();
+        this.recompress = callbacks.getRecompress();
+        if( "false"==this.recompress ) {
+            tsuid = null;
+        }
+        if( Objects.equals(tsuid,this.tsuid) ) return;
         this.tsuid = tsuid;
         if( tsuid==null || UID.ImplicitVRLittleEndian.equals(tsuid) || UID.ExplicitVRLittleEndian.equals(tsuid)) {
             compressor = null;
@@ -108,9 +114,12 @@ public class ExtractImageFrames {
         compressParam.setCompressionMode(
                 ImageWriteParam.MODE_EXPLICIT);
         if( tsuid.equals(UID.JPEGLosslessSV1) ) {
+            log.warn("Setting compression type {}", "LOSSLESS-1");
             compressParam.setCompressionType("LOSSLESS-1");
         } else if( tsuid.equals(UID.JPEG2000Lossless) ) {
             compressParam.setCompressionType("LOSSLESS");
+        } else {
+            log.warn("Not setting compression type because tsuid={}", tsuid);
         }
     }
 
@@ -146,7 +155,7 @@ public class ExtractImageFrames {
         }
 
         int midFrame = (frames+1)/2;
-        convertThumbnail(reader, dir, attr, frameName.replace("/frames", "thumbnail"), midFrame);
+        convertThumbnail(reader, dir, attr, frameName.replace("/frames", "/thumbnail"), midFrame);
 
         attr.setValue(Tag.PixelData,VR.OB, bulkdataReader);
     }
@@ -364,6 +373,11 @@ public class ExtractImageFrames {
         String hash = callbacks.fileHandler.hashOf(bulk.getFile(), getOffset(uri), getLength(uri));
         String bulkName = callbacks.getBulkdataName(hash);
         BulkData updatedBulk = saveMultipart(callbacks.getStudiesDir(id),bulkName,bulk,OCTET_STREAM, SEPARATOR, true, null);
+        VR vr = attr.getVR(tag);
+        if( vr==null ) {
+            log.warn("Null VR for {}", Integer.toHexString(tag));
+            vr = VR.OB;
+        }
         attr.setValue(tag,attr.getVR(tag), updatedBulk);
     }
 
@@ -406,6 +420,7 @@ public class ExtractImageFrames {
         Object writeData = bulk;
         String sourceTsuid = attr.getString(Tag.AvailableTransferSyntaxUID);
         log.warn("sourceTsuid = {}", sourceTsuid);
+        setTransferSyntaxUid();
         String writeType = CONTENT_TYPES.get(sourceTsuid);
         boolean gzip = false;
         if( writeType==null ) {
@@ -415,12 +430,13 @@ public class ExtractImageFrames {
         }
         String simpleTsuid = getSimpleTsuid(sourceTsuid);
         if( reader!=null && (tsuid!=null && recompress.contains(simpleTsuid) || fragmented) ) {
-            log.debug("Converting image from {}({}) to {}", sourceTsuid, simpleTsuid, tsuid);
             try {
                 WritableRaster r = (WritableRaster) reader.readRaster(frame-1, null);
                 if( compressor!=null ) {
+                    log.debug("Converting image from {}({}) to {}", sourceTsuid, simpleTsuid, tsuid);
                     ImageTypeSpecifier specifier = getSpecifier(attr);
                     BufferedImage bi = new BufferedImage(specifier.getColorModel(),r,false,null);
+                    String destTsuid = tsuid==null ? sourceTsuid : tsuid;
                     try(ExtMemoryCacheImageOutputStream ios = new ExtMemoryCacheImageOutputStream(attr)) {
                         synchronized(compressor) {
                             compressor.setOutput(ios);
@@ -428,12 +444,12 @@ public class ExtractImageFrames {
                             compressor.write(null, new IIOImage(bi, null, null), compressParam);
                         }
                         writeData = ios.toByteArray();
-                        writeType = CONTENT_TYPES.get(tsuid) + ";transfer-syntax="+tsuid;
+                        writeType = CONTENT_TYPES.get(destTsuid) + ";transfer-syntax="+destTsuid;
                         attr.setString(Tag.AvailableTransferSyntaxUID,VR.UI, tsuid);
-                        log.warn("Converted {} to {} length {} type {}", sourceTsuid, tsuid, ((byte[]) writeData).length, writeType);
+                        log.warn("Converted {} to {} length {} type {}", sourceTsuid, destTsuid, ((byte[]) writeData).length, writeType);
                     }
                 } else {
-                    log.debug("Write source type {} uncompressed", sourceTsuid);
+                    log.warn("Write source type {} uncompressed", sourceTsuid);
                     DataBuffer buf = r.getDataBuffer();
                     writeData = toBytes(buf);
                     writeType = OCTET_STREAM;
@@ -450,7 +466,8 @@ public class ExtractImageFrames {
             }
         } else {
             callbacks.studyStats.add("Orig TS Image", 1000, "Leaving {} as original type {} imageReader {} tsuid {}", sourceTsuid, writeType, reader, tsuid);
-            gzip = UID.ImplicitVRLittleEndian.equals(tsuid) || UID.ExplicitVRLittleEndian.equals(tsuid);
+            gzip = "lei".equalsIgnoreCase(simpleTsuid);
+            log.warn("Write original data gzip={} writeType={} for leave as original", gzip,writeType);
         }
         log.debug("Original bulkdata source is {}", (bulk instanceof BulkData) ? ((BulkData) bulk).getURI() : bulk);
         BulkData writeBulk = saveMultipart(dir,dest, writeData, writeType, SEPARATOR, gzip, null);
@@ -515,17 +532,5 @@ public class ExtractImageFrames {
         }
         // Probably int RGB, should convert this sometime.
         throw new UnsupportedOperationException("Unknown buffer type "+ buf.getClass());
-    }
-
-    public String getTransferSyntaxUid() {
-        return tsuid;
-    }
-
-    public void setRecompress(String recompress) {
-        this.recompress = recompress==null ? "lei,j2k" : recompress;
-    }
-
-    public String getRecompress() {
-        return recompress;
     }
 }

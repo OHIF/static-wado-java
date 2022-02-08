@@ -92,7 +92,7 @@ public class JsonAccess {
 
   public static List<Attributes> read(FileHandler handler, String dir, String name) throws IOException {
     List<Attributes> ret = new ArrayList<>();
-    log.warn("Reading JSON file {}/{}", dir,name);
+    log.debug("Reading JSON file {}/{}", dir,name);
     try (InputStream is = handler.read(dir, name)) {
       JsonParser parser = Json.createParser(is);
       new JSONReader(parser).readDatasets((fmi, attr) -> {

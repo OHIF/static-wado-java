@@ -26,8 +26,8 @@ public class StudyConsumer implements BiConsumer<String, Attributes> {
     List<Attributes> studies;
     String dicomWebDir = callbacks.getDicomWebDir();
     try {
-      log.debug("Adding study {}", studyQuery);
-      studies = JsonAccess.read(callbacks.fileHandler,dicomWebDir, "studies.gz")
+      log.warn("Adding study {}", studyQuery);
+      studies = JsonAccess.read(callbacks.fileHandler,dicomWebDir, "studies/index.json.gz")
           .stream().filter(item -> !studyUid.equals(item.getString(Tag.StudyInstanceUID)))
           .collect(Collectors.toList());
       studies.add(studyQuery);
@@ -38,7 +38,7 @@ public class StudyConsumer implements BiConsumer<String, Attributes> {
     log.warn("Writing studies directory {} with {} instances", dicomWebDir, studies.size());
     JsonAccess.write(callbacks.fileHandler,
         dicomWebDir,
-        "studies", true,
+        "studies/index.json", true,
         studies.toArray(Attributes[]::new));
   }
 

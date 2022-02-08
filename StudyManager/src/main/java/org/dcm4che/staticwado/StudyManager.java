@@ -4,6 +4,7 @@ import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.BulkData;
 import org.dcm4che3.data.Fragments;
 import org.dcm4che3.data.Tag;
+import org.dcm4che3.data.UID;
 import org.dcm4che3.imageio.plugins.dcm.DicomImageReader;
 import org.dcm4che3.io.DicomStreamException;
 import org.slf4j.Logger;
@@ -41,6 +42,15 @@ public class StudyManager {
   public Stats overallStats = new Stats("Overall Stats", null);
   public Stats studyStats = new Stats("StudyStats", overallStats);
 
+  String desiredTsuid = UID.JPEGLSLossless;
+  String recompress = "jls,lei";
+  boolean update;
+
+  private boolean deduplicateGroup, deduplicate, instanceMetadata, studyMetadata;
+  private boolean completeStudy = true;
+
+  private String dicomWebDir = System.getProperty("user.home") + "/dicomweb";
+
   public boolean isDeduplicateGroup() {
     return deduplicateGroup || completeStudy;
   }
@@ -59,6 +69,14 @@ public class StudyManager {
 
   public boolean isInstanceMetadata() {
     return instanceMetadata;
+  }
+
+  public void setUpdate(boolean update) {
+    this.update = update;
+  }
+
+  public boolean isUpdate() {
+    return this.update;
   }
 
   public void setInstanceMetadata(boolean instanceMetadata) {
@@ -81,11 +99,6 @@ public class StudyManager {
     this.completeStudy = completeStudy;
   }
 
-  private boolean deduplicateGroup, deduplicate, instanceMetadata, studyMetadata;
-  private boolean completeStudy = true;
-
-  private String dicomWebDir = System.getProperty("user.home") + "/dicomweb";
-
   public StudyManager() {
     studyHandler = new CompleteStudyHandler(this);
     instanceConsumer = new InstanceDeduplicate(this);
@@ -98,7 +111,23 @@ public class StudyManager {
   }
 
   public String getDestinationTsuid() {
-    return null;
+    return desiredTsuid;
+  }
+
+  public StudyManager setDestinationTsuid(String tsuid) {
+    this.desiredTsuid = tsuid;
+    log.warn("Setting desired tsuid {}", tsuid);
+    return this;
+  }
+
+  public StudyManager setRecompress(String recompress) {
+    log.warn("Setting recompress to {}", recompress);
+    this.recompress = recompress;
+    return this;
+  }
+
+  public String getRecompress() {
+    return recompress;
   }
 
   /**
