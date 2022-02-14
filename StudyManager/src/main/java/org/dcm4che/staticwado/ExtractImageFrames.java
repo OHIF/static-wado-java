@@ -36,8 +36,8 @@ public class ExtractImageFrames {
             UID.MPEG4HP42STEREO, UID.MPEG4HP422D, UID.MPEG4HP423D, UID.MPEG4HP42STEREO,
             UID.HEVCMP51, UID.HEVCM10P51));
 
-    public static final String IMAGE_JPEG_LOSSLESS = "image/jll";
-    public static final String IMAGE_JPEG_LS = "image/x-jls";
+    public static final String IMAGE_JPEG_LOSSLESS = "image/jpeg";
+    public static final String IMAGE_JPEG_LS = "image/jls";
     public static final String IMAGE_JPEG = "image/jpeg";
     public static final String IMAGE_JP2 = "image/jp2";
     public static final String VIDEO_H264 = "video/mp4";

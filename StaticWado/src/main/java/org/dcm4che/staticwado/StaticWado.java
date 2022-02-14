@@ -68,7 +68,7 @@ public class StaticWado {
         if( "lei".equalsIgnoreCase(name) ) return UID.ImplicitVRLittleEndian;
         if( "jls".equalsIgnoreCase(name) ) return UID.JPEGLSLossless;
         if( "jll".equalsIgnoreCase(name) ) return UID.JPEGLosslessSV1;
-        if( "j2k".equalsIgnoreCase(name) ) return UID.JPEG2000Lossless;
+        if( "j2k".equalsIgnoreCase(name) || "jp2".equalsIgnoreCase(name) ) return UID.JPEG2000Lossless;
         if( "lee".equalsIgnoreCase(name) ) return UID.ExplicitVRLittleEndian;
         if( "false".equalsIgnoreCase(name) ) return null;
         return UID.JPEGLSLossless;
